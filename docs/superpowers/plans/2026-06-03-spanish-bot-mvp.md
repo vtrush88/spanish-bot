@@ -6,9 +6,30 @@
 
 **Architecture:** Один Python-процесс на `aiogram` (long-polling) + SQLite. Тонкие хендлеры зовут сервисы; вся логика — в `services/`, `db.py`, презентация — в `formatting.py`. Чистая логика (`srs`, `config`, парсинг ответов Claude, форматирование) покрыта юнит-тестами без живого Telegram и без реальных вызовов API. Хендлеры верифицируются ручным запуском.
 
-**Tech Stack:** Python 3.11+, aiogram 3.x, anthropic SDK (модель `claude-haiku-4-5`), edge-tts, sqlite3 (stdlib), python-dotenv, pytest + pytest-asyncio.
+**Tech Stack:** Python 3.11+, aiogram 3.x, anthropic SDK (модель `claude-haiku-4-5-20251001`), edge-tts, sqlite3 (stdlib), python-dotenv, pytest + pytest-asyncio.
 
 **Spec:** `docs/superpowers/specs/2026-06-02-spanish-bot-design.md`
+
+---
+
+## Execution discipline — стоп после каждого шага
+
+Этот план исполняется **по одному шагу за раз**. После КАЖДОГО шага (именно шага, не задачи):
+
+1. **Стоп.** Не переходи к следующему шагу автоматически.
+2. **Проверь.** Запусти то, что предписывает шаг (тест/команда), и сверь вывод с «Expected».
+   Шаг засчитан только при совпадении. TDD-инвариант: тест на чистую логику должен **падать
+   до** реализации и **проходить после** — не пропускай шаг «убедиться, что падает».
+3. **Отревьюй сделанное.** Перечитай свой diff: соответствует ли он ровно этому шагу, нет ли
+   лишнего, читается ли код как окружающий. Расхождение со спекой — повод остановиться, а не
+   «поправлю потом».
+4. **Только потом** переходи к следующему шагу.
+
+После каждой ЗАДАЧИ (перед коммитом): весь сьют `pytest -q` зелёный + краткая сверка задачи
+со спекой. При subagent-driven исполнении это и есть точки ревью между задачами.
+
+Анти-паттерн: «сделаю несколько шагов разом и проверю в конце». Цель — ловить ошибку на самом
+раннем шаге, где она дешевле всего.
 
 ---
 
@@ -654,7 +675,7 @@ Expected: FAIL (`ModuleNotFoundError`).
 ```python
 from __future__ import annotations
 
-MODEL = "claude-haiku-4-5"
+MODEL = "claude-haiku-4-5-20251001"
 
 REQUIRED_KEYS = (
     "kind", "spanish", "russian", "transcription", "example_es", "example_ru",
@@ -786,7 +807,7 @@ Expected: FAIL (`ModuleNotFoundError`).
 ```python
 from __future__ import annotations
 
-MODEL = "claude-haiku-4-5"
+MODEL = "claude-haiku-4-5-20251001"
 REQUIRED_KEYS = ("verdict", "correct_spanish", "note")
 
 SYSTEM = (
