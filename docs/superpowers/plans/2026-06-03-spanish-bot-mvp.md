@@ -890,7 +890,13 @@ git commit -m "feat: Claude grading service for translation checks"
 **Files:**
 - Create: `services/tts.py`, `tests/test_tts.py`
 
-edge-tts асинхронно генерирует ogg-озвучку. В юнит-тесте мокаем `edge_tts.Communicate`, чтобы не ходить в сеть.
+edge-tts асинхронно генерирует озвучку. В юнит-тесте мокаем `edge_tts.Communicate`, чтобы не ходить в сеть.
+
+> ⚠️ **Известный риск (проверить в бою на ручных шагах Task 12/13/15):** edge-tts отдаёт
+> **MP3**, а Telegram `answer_voice` требует **OGG/OPUS** — голосовое может не отправиться.
+> Решено проверить поведение на практике. Если Telegram отвергнет `answer_voice` —
+> переключиться на `answer_audio` (mp3, без зависимостей; тогда `file_id` берём из
+> `sent.audio.file_id`) или конвертировать в ogg/opus через ffmpeg.
 
 - [ ] **Step 1: Написать падающий тест `tests/test_tts.py`**
 
