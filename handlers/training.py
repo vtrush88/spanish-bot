@@ -160,3 +160,53 @@ async def check_translation(
                      remembered=ok)
     await state.update_data(queue=queue[1:])
     await _ask_next_translation(message, state, conn)
+
+
+async def _ask_next_listen(
+    message: Message, state: FSMContext, conn: sqlite3.Connection
+) -> None:
+    data = await state.get_data()
+    queue = data.get("queue", [])
+    if not queue:
+        await state.clear()
+        await message.answer("Готово на сегодня! 👏",
+                             reply_markup=keyboards.main_menu())
+        return
+    card = db.get_card(conn, queue[0])
+    await message.answer("🔊 Что это за слово? Напиши, что услышала:")
+    await _send_voice(message, conn, card)
+
+
+@router.message(F.text == keyboards.BTN_LISTEN)
+async def start_listen(
+    message: Message, state: FSMContext, conn: sqlite3.Connection
+) -> None:
+    due = db.get_due_cards(conn, message.from_user.id, date.today())
+    if not due:
+        await message.answer(EMPTY)
+        return
+    await state.set_state(Training.listen)
+    await state.update_data(queue=[r["id"] for r in due])
+    await _ask_next_listen(message, state, conn)
+
+
+@router.message(Training.listen, F.text)
+async def check_listen(
+    message: Message, state: FSMContext, conn: sqlite3.Connection
+) -> None:
+    data = await state.get_data()
+    queue = data["queue"]
+    card = db.get_card(conn, queue[0])
+    ok = message.text.strip().lower() == card["spanish"].lower()
+    if ok:
+        await message.answer(f"✅ Да! 🔤 {card['spanish']} — {card['russian']}")
+    else:
+        await message.answer(
+            f"Услышалось: {card['spanish']} — {card['russian']}"
+        )
+    new_interval = srs.next_interval(card["interval_days"], ok)
+    db.update_review(conn, card["id"], interval_days=new_interval,
+                     due_at=srs.due_on(date.today(), new_interval),
+                     remembered=ok)
+    await state.update_data(queue=queue[1:])
+    await _ask_next_listen(message, state, conn)
