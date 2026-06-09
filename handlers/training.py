@@ -14,6 +14,7 @@ import db
 import formatting
 import intents
 import keyboards
+import session
 from services import grading, srs, tts
 from states import Training
 
@@ -76,7 +77,7 @@ async def start_flashcards(
         await message.answer(EMPTY)
         return
     await state.set_state(Training.flashcards)
-    await state.update_data(queue=[r["id"] for r in due])
+    await state.update_data(queue=[r["id"] for r in due], retried=[])
     await _show_next_flashcard(message, state, conn)
 
 
@@ -100,17 +101,22 @@ async def grade_flashcard(call: CallbackQuery, state: FSMContext,
     remembered = call.data == "grade:remember"
     data = await state.get_data()
     queue = data["queue"]
+    retried = data.get("retried", [])
     card = db.get_card(conn, queue[0])
     if card is None:
         await state.update_data(queue=queue[1:])
         await call.answer()
         await _show_next_flashcard(call.message, state, conn)
         return
-    new_interval = srs.next_interval(card["interval_days"], remembered)
-    db.update_review(conn, card["id"], interval_days=new_interval,
-                     due_at=srs.due_on(date.today(), new_interval),
-                     remembered=remembered)
-    await state.update_data(queue=queue[1:])
+    card_id = queue[0]
+    if card_id not in retried:  # first encounter drives scheduling
+        new_interval = srs.next_interval(card["interval_days"], remembered)
+        db.update_review(conn, card_id, interval_days=new_interval,
+                         due_at=srs.due_on(date.today(), new_interval),
+                         remembered=remembered)
+    new_queue, new_retried = session.advance(
+        queue, retried, remembered=remembered, giveup=False)
+    await state.update_data(queue=new_queue, retried=new_retried)
     await call.answer("👍" if remembered else "Повторим ещё")
     await _show_next_flashcard(call.message, state, conn)
 
@@ -143,7 +149,7 @@ async def start_translate(
         await message.answer(EMPTY)
         return
     await state.set_state(Training.translate)
-    await state.update_data(queue=[r["id"] for r in due])
+    await state.update_data(queue=[r["id"] for r in due], retried=[])
     await _ask_next_translation(message, state, conn)
 
 
@@ -153,12 +159,15 @@ async def check_translation(
 ) -> None:
     data = await state.get_data()
     queue = data["queue"]
+    retried = data.get("retried", [])
     card = db.get_card(conn, queue[0])
     if card is None:
         await state.update_data(queue=queue[1:])
         await _ask_next_translation(message, state, conn)
         return
-    if intents.is_giveup(message.text):
+    card_id = queue[0]
+    giveup = intents.is_giveup(message.text)
+    if giveup:
         ok = False
         await message.answer("Ничего страшного ❤️ Запомним вместе:")
         await message.answer(formatting.card_preview(card))
@@ -187,11 +196,14 @@ async def check_translation(
             await message.answer("✅ Верно!" if ok
                                  else f"❌ Правильно: {card['spanish']}")
 
-    new_interval = srs.next_interval(card["interval_days"], ok)
-    db.update_review(conn, card["id"], interval_days=new_interval,
-                     due_at=srs.due_on(date.today(), new_interval),
-                     remembered=ok)
-    await state.update_data(queue=queue[1:])
+    if card_id not in retried:  # first encounter drives scheduling
+        new_interval = srs.next_interval(card["interval_days"], ok)
+        db.update_review(conn, card_id, interval_days=new_interval,
+                         due_at=srs.due_on(date.today(), new_interval),
+                         remembered=ok)
+    new_queue, new_retried = session.advance(
+        queue, retried, remembered=ok, giveup=giveup)
+    await state.update_data(queue=new_queue, retried=new_retried)
     await _ask_next_translation(message, state, conn)
 
 
@@ -224,7 +236,7 @@ async def start_listen(
         await message.answer(EMPTY)
         return
     await state.set_state(Training.listen)
-    await state.update_data(queue=[r["id"] for r in due])
+    await state.update_data(queue=[r["id"] for r in due], retried=[])
     await _ask_next_listen(message, state, conn)
 
 
@@ -234,12 +246,15 @@ async def check_listen(
 ) -> None:
     data = await state.get_data()
     queue = data["queue"]
+    retried = data.get("retried", [])
     card = db.get_card(conn, queue[0])
     if card is None:
         await state.update_data(queue=queue[1:])
         await _ask_next_listen(message, state, conn)
         return
-    if intents.is_giveup(message.text):
+    card_id = queue[0]
+    giveup = intents.is_giveup(message.text)
+    if giveup:
         ok = False
         await message.answer("Ничего страшного ❤️ Вот это слово:")
         await message.answer(formatting.card_preview(card))
@@ -251,9 +266,12 @@ async def check_listen(
             await message.answer(
                 f"Почти! Правильно: {card['spanish']} — {card['russian']}"
             )
-    new_interval = srs.next_interval(card["interval_days"], ok)
-    db.update_review(conn, card["id"], interval_days=new_interval,
-                     due_at=srs.due_on(date.today(), new_interval),
-                     remembered=ok)
-    await state.update_data(queue=queue[1:])
+    if card_id not in retried:  # first encounter drives scheduling
+        new_interval = srs.next_interval(card["interval_days"], ok)
+        db.update_review(conn, card_id, interval_days=new_interval,
+                         due_at=srs.due_on(date.today(), new_interval),
+                         remembered=ok)
+    new_queue, new_retried = session.advance(
+        queue, retried, remembered=ok, giveup=giveup)
+    await state.update_data(queue=new_queue, retried=new_retried)
     await _ask_next_listen(message, state, conn)
