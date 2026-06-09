@@ -12,6 +12,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
 import db
 import formatting
+import intents
 import keyboards
 from services import grading, srs, tts
 from states import Training
@@ -157,29 +158,34 @@ async def check_translation(
         await state.update_data(queue=queue[1:])
         await _ask_next_translation(message, state, conn)
         return
-    try:
-        verdict = grading.grade(
-            anthropic, prompt_ru=card["russian"],
-            expected_es=card["spanish"], answer=message.text.strip(),
-        )
-        ok = verdict["verdict"] in ("correct", "typo")
-        if verdict["verdict"] == "correct":
-            await message.answer(f"✅ Верно! {verdict['note']}")
-        elif verdict["verdict"] == "typo":
-            await message.answer(
-                f"✅ Почти! Правильно: {verdict['correct_spanish']} "
-                f"({verdict['note']})"
+    if intents.is_giveup(message.text):
+        ok = False
+        await message.answer("Ничего страшного ❤️ Запомним вместе:")
+        await message.answer(formatting.card_preview(card))
+    else:
+        try:
+            verdict = grading.grade(
+                anthropic, prompt_ru=card["russian"],
+                expected_es=card["spanish"], answer=message.text.strip(),
             )
-        else:
-            await message.answer(
-                f"❌ Не совсем. Правильно: {verdict['correct_spanish']} "
-                f"({verdict['note']})"
-            )
-    except grading.GradingError:
-        # Fall back to a forgiving exact-match check if Claude is unavailable.
-        ok = message.text.strip().lower() == card["spanish"].lower()
-        await message.answer("✅ Верно!" if ok
-                             else f"❌ Правильно: {card['spanish']}")
+            ok = verdict["verdict"] in ("correct", "typo")
+            if verdict["verdict"] == "correct":
+                await message.answer(f"✅ Верно! {verdict['note']}")
+            elif verdict["verdict"] == "typo":
+                await message.answer(
+                    f"✅ Почти! Правильно: {verdict['correct_spanish']} "
+                    f"({verdict['note']})"
+                )
+            else:
+                await message.answer(
+                    f"❌ Не совсем. Правильно: {verdict['correct_spanish']} "
+                    f"({verdict['note']})"
+                )
+        except grading.GradingError:
+            # Fall back to a forgiving exact-match check if Claude is unavailable.
+            ok = message.text.strip().lower() == card["spanish"].lower()
+            await message.answer("✅ Верно!" if ok
+                                 else f"❌ Правильно: {card['spanish']}")
 
     new_interval = srs.next_interval(card["interval_days"], ok)
     db.update_review(conn, card["id"], interval_days=new_interval,
@@ -233,13 +239,18 @@ async def check_listen(
         await state.update_data(queue=queue[1:])
         await _ask_next_listen(message, state, conn)
         return
-    ok = message.text.strip().lower() == card["spanish"].lower()
-    if ok:
-        await message.answer(f"✅ Да! 🔤 {card['spanish']} — {card['russian']}")
+    if intents.is_giveup(message.text):
+        ok = False
+        await message.answer("Ничего страшного ❤️ Вот это слово:")
+        await message.answer(formatting.card_preview(card))
     else:
-        await message.answer(
-            f"Почти! Правильно: {card['spanish']} — {card['russian']}"
-        )
+        ok = message.text.strip().lower() == card["spanish"].lower()
+        if ok:
+            await message.answer(f"✅ Да! 🔤 {card['spanish']} — {card['russian']}")
+        else:
+            await message.answer(
+                f"Почти! Правильно: {card['spanish']} — {card['russian']}"
+            )
     new_interval = srs.next_interval(card["interval_days"], ok)
     db.update_review(conn, card["id"], interval_days=new_interval,
                      due_at=srs.due_on(date.today(), new_interval),
