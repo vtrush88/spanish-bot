@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import edge_tts
 
-VOICE = "es-ES-ElviraNeural"
+VOICE = "es-ES-XimenaNeural"
 
 
 class TTSError(Exception):
@@ -10,7 +10,7 @@ class TTSError(Exception):
 
 
 async def synthesize(text: str, out_path: str) -> str:
-    """Сгенерировать испанскую озвучку в ogg-файл. Возвращает путь."""
+    """Сгенерировать испанскую озвучку (mp3). Возвращает путь."""
     try:
         comm = edge_tts.Communicate(text, VOICE)
         await comm.save(out_path)
