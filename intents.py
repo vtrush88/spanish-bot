@@ -2,7 +2,9 @@ from __future__ import annotations
 
 # Substrings that signal "I don't know / can't recall" — matched anywhere in
 # the answer so phrases like "ой, не помню это слово" are caught too.
-_GIVEUP_SUBSTRINGS = ("не помн", "непомн", "не зна", "незна", "не понима")
+_GIVEUP_SUBSTRINGS = (
+    "не помн", "непомн", "не зна", "незна", "не понима", "не поня", "непоня",
+)
 
 # Short stand-alone give-up answers (matched after trimming punctuation).
 _GIVEUP_EXACT = {"хз", "забыла", "забыл", "пас", "пропустить", "дальше"}
