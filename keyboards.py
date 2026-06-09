@@ -44,3 +44,21 @@ def save_card_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="✏️ Исправить перевод", callback_data="save:edit"),
         InlineKeyboardButton(text="❌ Нет", callback_data="save:no"),
     ]])
+
+
+PAGE_SIZE = 10
+
+
+def vocab_keyboard(cards: list, page: int, total: int) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(
+        text=f"🗑 {i + 1 + page * PAGE_SIZE}",
+        callback_data=f"del:{c['id']}",
+    )] for i, c in enumerate(cards)]
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀", callback_data=f"vocab:{page - 1}"))
+    if (page + 1) * PAGE_SIZE < total:
+        nav.append(InlineKeyboardButton(text="▶", callback_data=f"vocab:{page + 1}"))
+    if nav:
+        rows.append(nav)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
