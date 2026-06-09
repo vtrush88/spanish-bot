@@ -45,12 +45,16 @@ async def _show_next_flashcard(
 ) -> None:
     data = await state.get_data()
     queue = data.get("queue", [])
+    card = None
+    while queue and card is None:
+        card = db.get_card(conn, queue[0])
+        if card is None:
+            queue = queue[1:]
+    await state.update_data(queue=queue)
     if not queue:
         await state.clear()
         await message.answer("Готово на сегодня! 👏", reply_markup=keyboards.main_menu())
         return
-    card_id = queue[0]
-    card = db.get_card(conn, card_id)
     await message.answer(f"🎴 {card['spanish']}")
     await _send_voice(message, conn, card)
     await message.answer("…вспомни перевод…",
@@ -75,6 +79,10 @@ async def reveal(call: CallbackQuery, state: FSMContext,
                  conn: sqlite3.Connection) -> None:
     data = await state.get_data()
     card = db.get_card(conn, data["queue"][0])
+    if card is None:
+        await call.answer()
+        await _show_next_flashcard(call.message, state, conn)
+        return
     await call.message.answer(formatting.answer_reveal(card),
                               reply_markup=keyboards.grade_keyboard())
     await call.answer()
@@ -87,6 +95,11 @@ async def grade_flashcard(call: CallbackQuery, state: FSMContext,
     data = await state.get_data()
     queue = data["queue"]
     card = db.get_card(conn, queue[0])
+    if card is None:
+        await state.update_data(queue=queue[1:])
+        await call.answer()
+        await _show_next_flashcard(call.message, state, conn)
+        return
     new_interval = srs.next_interval(card["interval_days"], remembered)
     db.update_review(conn, card["id"], interval_days=new_interval,
                      due_at=srs.due_on(date.today(), new_interval),
@@ -101,12 +114,17 @@ async def _ask_next_translation(
 ) -> None:
     data = await state.get_data()
     queue = data.get("queue", [])
+    card = None
+    while queue and card is None:
+        card = db.get_card(conn, queue[0])
+        if card is None:
+            queue = queue[1:]
+    await state.update_data(queue=queue)
     if not queue:
         await state.clear()
         await message.answer("Готово на сегодня! 👏",
                              reply_markup=keyboards.main_menu())
         return
-    card = db.get_card(conn, queue[0])
     await message.answer(f"Как по-испански: «{card['russian']}»?")
 
 
@@ -130,6 +148,10 @@ async def check_translation(
     data = await state.get_data()
     queue = data["queue"]
     card = db.get_card(conn, queue[0])
+    if card is None:
+        await state.update_data(queue=queue[1:])
+        await _ask_next_translation(message, state, conn)
+        return
     try:
         verdict = grading.grade(
             anthropic, prompt_ru=card["russian"],
@@ -167,12 +189,17 @@ async def _ask_next_listen(
 ) -> None:
     data = await state.get_data()
     queue = data.get("queue", [])
+    card = None
+    while queue and card is None:
+        card = db.get_card(conn, queue[0])
+        if card is None:
+            queue = queue[1:]
+    await state.update_data(queue=queue)
     if not queue:
         await state.clear()
         await message.answer("Готово на сегодня! 👏",
                              reply_markup=keyboards.main_menu())
         return
-    card = db.get_card(conn, queue[0])
     await message.answer("🔊 Что это за слово? Напиши, что услышала:")
     await _send_voice(message, conn, card)
 
@@ -197,12 +224,16 @@ async def check_listen(
     data = await state.get_data()
     queue = data["queue"]
     card = db.get_card(conn, queue[0])
+    if card is None:
+        await state.update_data(queue=queue[1:])
+        await _ask_next_listen(message, state, conn)
+        return
     ok = message.text.strip().lower() == card["spanish"].lower()
     if ok:
         await message.answer(f"✅ Да! 🔤 {card['spanish']} — {card['russian']}")
     else:
         await message.answer(
-            f"Услышалось: {card['spanish']} — {card['russian']}"
+            f"Почти! Правильно: {card['spanish']} — {card['russian']}"
         )
     new_interval = srs.next_interval(card["interval_days"], ok)
     db.update_review(conn, card["id"], interval_days=new_interval,

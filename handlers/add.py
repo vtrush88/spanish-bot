@@ -18,6 +18,11 @@ from states import AddCard
 
 router = Router()
 
+_MENU_BUTTONS = {
+    keyboards.BTN_ADD, keyboards.BTN_FLASHCARDS, keyboards.BTN_TRANSLATE,
+    keyboards.BTN_LISTEN, keyboards.BTN_VOCAB,
+}
+
 
 @router.message(F.text == keyboards.BTN_ADD)
 async def start_add(message: Message, state: FSMContext) -> None:
@@ -30,6 +35,10 @@ async def receive_text(
     message: Message, state: FSMContext, anthropic: Anthropic
 ) -> None:
     text = message.text.strip()
+    if text in _MENU_BUTTONS:
+        await state.clear()
+        await message.answer("Окей, отменила добавление 🙂 Нажми кнопку ещё раз.")
+        return
     try:
         card = enrichment.enrich(anthropic, text)
     except enrichment.EnrichmentError:
@@ -68,7 +77,10 @@ async def save_yes(
     call: CallbackQuery, state: FSMContext, conn: sqlite3.Connection
 ) -> None:
     data = await state.get_data()
-    card = data["card"]
+    card = data.get("card")
+    if card is None:
+        await call.answer("Эта карточка уже неактивна 🙂")
+        return
     db.add_card(
         conn, user_id=call.from_user.id, kind=card["kind"],
         spanish=card["spanish"], russian=card["russian"],
@@ -91,8 +103,17 @@ async def save_edit(call: CallbackQuery, state: FSMContext) -> None:
 async def receive_correction(
     message: Message, state: FSMContext, conn: sqlite3.Connection
 ) -> None:
+    if message.text.strip() in _MENU_BUTTONS:
+        await state.clear()
+        await message.answer("Окей, отменила 🙂 Нажми кнопку ещё раз.")
+        return
     data = await state.get_data()
-    card = dict(data["card"])
+    stored = data.get("card")
+    if stored is None:
+        await state.clear()
+        await message.answer("Что-то пошло не так, начни добавление заново 🙂")
+        return
+    card = dict(stored)
     card["russian"] = message.text.strip()
     db.add_card(
         conn, user_id=message.from_user.id, kind=card["kind"],
