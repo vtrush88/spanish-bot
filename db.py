@@ -147,3 +147,16 @@ def update_enrichment(
         (russian, transcription, example_es, example_ru, card_id),
     )
     conn.commit()
+
+
+def card_exists(conn: sqlite3.Connection, user_id: int, spanish: str) -> bool:
+    """Case-insensitive check whether the user already has this Spanish word.
+
+    Compares in Python so accented letters (á, ñ, …) fold correctly, which
+    sqlite's ASCII-only lower() would miss.
+    """
+    target = spanish.strip().lower()
+    rows = conn.execute(
+        "SELECT spanish FROM cards WHERE user_id = ?", (user_id,)
+    ).fetchall()
+    return any((r["spanish"] or "").strip().lower() == target for r in rows)

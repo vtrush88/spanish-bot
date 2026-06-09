@@ -33,7 +33,8 @@ async def start_add(message: Message, state: FSMContext) -> None:
 
 @router.message(AddCard.waiting_for_text, F.text)
 async def receive_text(
-    message: Message, state: FSMContext, anthropic: Anthropic
+    message: Message, state: FSMContext, conn: sqlite3.Connection,
+    anthropic: Anthropic,
 ) -> None:
     text = message.text.strip()
     if text in _MENU_BUTTONS:
@@ -49,6 +50,11 @@ async def receive_text(
             "Не получилось обработать сейчас 😕 Попробуй ещё раз через минутку "
             "или пришли другое слово."
         )
+        return
+
+    if db.card_exists(conn, message.from_user.id, card["spanish"]):
+        await state.clear()
+        await message.answer(f"«{card['spanish']}» уже есть в твоём словаре 🙂")
         return
 
     await state.update_data(card=card)

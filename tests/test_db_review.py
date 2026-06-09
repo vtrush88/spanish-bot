@@ -11,6 +11,21 @@ def _add(conn, spanish, russian, today, enriched=True):
     )
 
 
+def test_card_exists_case_insensitive(conn):
+    _add(conn, "comida", "еда", date(2026, 6, 3))
+    assert db.card_exists(conn, 111, "comida") is True
+    assert db.card_exists(conn, 111, "Comida") is True
+    assert db.card_exists(conn, 111, "  COMIDA ") is True
+    assert db.card_exists(conn, 111, "agua") is False
+    # scoped per user
+    assert db.card_exists(conn, 999, "comida") is False
+
+
+def test_card_exists_handles_accents(conn):
+    _add(conn, "años", "годы", date(2026, 6, 3))
+    assert db.card_exists(conn, 111, "AÑOS") is True
+
+
 def test_update_review_remembered(conn):
     cid = _add(conn, "comida", "еда", date(2026, 6, 3))
     db.update_review(conn, cid, interval_days=3,
