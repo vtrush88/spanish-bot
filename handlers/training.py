@@ -12,7 +12,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 import db
 import formatting
 import keyboards
-from services import srs, tts
+from services import grading, srs, tts
 from states import Training
 
 router = Router()
@@ -94,3 +94,69 @@ async def grade_flashcard(call: CallbackQuery, state: FSMContext,
     await state.update_data(queue=queue[1:])
     await call.answer("👍" if remembered else "Повторим ещё")
     await _show_next_flashcard(call.message, state, conn)
+
+
+async def _ask_next_translation(
+    message: Message, state: FSMContext, conn: sqlite3.Connection
+) -> None:
+    data = await state.get_data()
+    queue = data.get("queue", [])
+    if not queue:
+        await state.clear()
+        await message.answer("Готово на сегодня! 👏",
+                             reply_markup=keyboards.main_menu())
+        return
+    card = db.get_card(conn, queue[0])
+    await message.answer(f"Как по-испански: «{card['russian']}»?")
+
+
+@router.message(F.text == keyboards.BTN_TRANSLATE)
+async def start_translate(
+    message: Message, state: FSMContext, conn: sqlite3.Connection
+) -> None:
+    due = db.get_due_cards(conn, message.from_user.id, date.today())
+    if not due:
+        await message.answer(EMPTY)
+        return
+    await state.set_state(Training.translate)
+    await state.update_data(queue=[r["id"] for r in due])
+    await _ask_next_translation(message, state, conn)
+
+
+@router.message(Training.translate, F.text)
+async def check_translation(
+    message: Message, state: FSMContext, conn: sqlite3.Connection, anthropic
+) -> None:
+    data = await state.get_data()
+    queue = data["queue"]
+    card = db.get_card(conn, queue[0])
+    try:
+        verdict = grading.grade(
+            anthropic, prompt_ru=card["russian"],
+            expected_es=card["spanish"], answer=message.text.strip(),
+        )
+        ok = verdict["verdict"] in ("correct", "typo")
+        if verdict["verdict"] == "correct":
+            await message.answer(f"✅ Верно! {verdict['note']}")
+        elif verdict["verdict"] == "typo":
+            await message.answer(
+                f"✅ Почти! Правильно: {verdict['correct_spanish']} "
+                f"({verdict['note']})"
+            )
+        else:
+            await message.answer(
+                f"❌ Не совсем. Правильно: {verdict['correct_spanish']} "
+                f"({verdict['note']})"
+            )
+    except grading.GradingError:
+        # Fall back to a forgiving exact-match check if Claude is unavailable.
+        ok = message.text.strip().lower() == card["spanish"].lower()
+        await message.answer("✅ Верно!" if ok
+                             else f"❌ Правильно: {card['spanish']}")
+
+    new_interval = srs.next_interval(card["interval_days"], ok)
+    db.update_review(conn, card["id"], interval_days=new_interval,
+                     due_at=srs.due_on(date.today(), new_interval),
+                     remembered=ok)
+    await state.update_data(queue=queue[1:])
+    await _ask_next_translation(message, state, conn)
