@@ -2,6 +2,8 @@ import config
 
 
 def test_load_parses_env(monkeypatch):
+    # Neutralize load_dotenv so a real local .env can't leak into the test.
+    monkeypatch.setattr(config, "load_dotenv", lambda *a, **k: None)
     monkeypatch.setenv("TELEGRAM_TOKEN", "tok123")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "key456")
     monkeypatch.setenv("ALLOWED_USER_IDS", "111, 222 ,333")
@@ -12,6 +14,8 @@ def test_load_parses_env(monkeypatch):
 
 
 def test_missing_required_raises(monkeypatch):
+    # Neutralize load_dotenv so a real local .env can't repopulate the var.
+    monkeypatch.setattr(config, "load_dotenv", lambda *a, **k: None)
     monkeypatch.delenv("TELEGRAM_TOKEN", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
     monkeypatch.setenv("ALLOWED_USER_IDS", "1")

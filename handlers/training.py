@@ -6,6 +6,7 @@ import tempfile
 from datetime import date
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 
@@ -21,19 +22,23 @@ EMPTY = ("На сегодня всё повторили! 🎉 Можешь до�
 
 
 async def _send_voice(message: Message, conn: sqlite3.Connection, card) -> None:
-    """Send cached voice by file_id, else synthesize and cache the file_id."""
+    """Send cached audio by file_id, else synthesize and cache the file_id.
+
+    edge-tts produces MP3 (rejected by Telegram voice messages), so we send it
+    as an audio file (answer_audio) and cache the returned audio file_id.
+    """
     if card["audio_file_id"]:
-        await message.answer_voice(card["audio_file_id"])
+        await message.answer_audio(card["audio_file_id"])
         return
-    tmp = os.path.join(tempfile.gettempdir(), f"tts_{card['id']}.ogg")
+    tmp = os.path.join(tempfile.gettempdir(), f"tts_{card['id']}.mp3")
     try:
         await tts.synthesize(card["spanish"], tmp)
         with open(tmp, "rb") as fh:
-            sent = await message.answer_voice(
-                BufferedInputFile(fh.read(), filename="word.ogg")
+            sent = await message.answer_audio(
+                BufferedInputFile(fh.read(), filename="word.mp3")
             )
-        db.set_audio_file_id(conn, card["id"], sent.voice.file_id)
-    except (tts.TTSError, OSError):
+        db.set_audio_file_id(conn, card["id"], sent.audio.file_id)
+    except (tts.TTSError, OSError, TelegramBadRequest):
         pass  # text card already shown; audio is best-effort
     finally:
         if os.path.exists(tmp):

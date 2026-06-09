@@ -6,6 +6,7 @@ import tempfile
 from datetime import date
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from anthropic import Anthropic
@@ -57,15 +58,19 @@ async def receive_text(
 
 
 async def _send_voice(message: Message, spanish: str) -> None:
-    """Best-effort voice; silent text-only fallback on TTS failure."""
-    tmp = os.path.join(tempfile.gettempdir(), f"tts_{abs(hash(spanish))}.ogg")
+    """Best-effort audio; silent text-only fallback on failure.
+
+    edge-tts produces MP3, which Telegram voice messages reject, so we send
+    it as an audio file (answer_audio) instead of answer_voice.
+    """
+    tmp = os.path.join(tempfile.gettempdir(), f"tts_{abs(hash(spanish))}.mp3")
     try:
         await tts.synthesize(spanish, tmp)
         with open(tmp, "rb") as fh:
-            await message.answer_voice(
-                BufferedInputFile(fh.read(), filename="word.ogg")
+            await message.answer_audio(
+                BufferedInputFile(fh.read(), filename="word.mp3")
             )
-    except (tts.TTSError, OSError):
+    except (tts.TTSError, OSError, TelegramBadRequest):
         await message.answer("🔇 (озвучка временно недоступна)")
     finally:
         if os.path.exists(tmp):
