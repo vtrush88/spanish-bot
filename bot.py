@@ -9,7 +9,7 @@ from anthropic import Anthropic
 
 import config
 import db
-from handlers import add, menu
+from handlers import add, menu, training
 
 DB_PATH = "spanish_bot.db"
 
@@ -35,6 +35,7 @@ async def main() -> None:
 
     dp.include_router(menu.router)
     dp.include_router(add.router)
+    dp.include_router(training.router)
 
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
