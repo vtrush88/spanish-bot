@@ -65,3 +65,85 @@ def add_card(
 def get_card(conn: sqlite3.Connection, card_id: int) -> sqlite3.Row | None:
     cur = conn.execute("SELECT * FROM cards WHERE id = ?", (card_id,))
     return cur.fetchone()
+
+
+def update_review(
+    conn: sqlite3.Connection,
+    card_id: int,
+    *,
+    interval_days: int,
+    due_at: date,
+    remembered: bool,
+) -> None:
+    conn.execute(
+        """
+        UPDATE cards
+        SET interval_days = ?, due_at = ?, reps = reps + 1,
+            lapses = lapses + ?
+        WHERE id = ?
+        """,
+        (interval_days, due_at.isoformat(), 0 if remembered else 1, card_id),
+    )
+    conn.commit()
+
+
+def get_due_cards(
+    conn: sqlite3.Connection, user_id: int, today: date
+) -> list[sqlite3.Row]:
+    cur = conn.execute(
+        "SELECT * FROM cards WHERE user_id = ? AND due_at <= ? ORDER BY due_at",
+        (user_id, today.isoformat()),
+    )
+    return cur.fetchall()
+
+
+def list_cards(
+    conn: sqlite3.Connection, user_id: int, limit: int, offset: int
+) -> list[sqlite3.Row]:
+    cur = conn.execute(
+        "SELECT * FROM cards WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
+        (user_id, limit, offset),
+    )
+    return cur.fetchall()
+
+
+def count_cards(conn: sqlite3.Connection, user_id: int) -> int:
+    cur = conn.execute(
+        "SELECT COUNT(*) AS n FROM cards WHERE user_id = ?", (user_id,)
+    )
+    return int(cur.fetchone()["n"])
+
+
+def delete_card(conn: sqlite3.Connection, card_id: int) -> None:
+    conn.execute("DELETE FROM cards WHERE id = ?", (card_id,))
+    conn.commit()
+
+
+def set_audio_file_id(
+    conn: sqlite3.Connection, card_id: int, file_id: str
+) -> None:
+    conn.execute(
+        "UPDATE cards SET audio_file_id = ? WHERE id = ?", (file_id, card_id)
+    )
+    conn.commit()
+
+
+def update_enrichment(
+    conn: sqlite3.Connection,
+    card_id: int,
+    *,
+    russian: str,
+    transcription: str,
+    example_es: str,
+    example_ru: str,
+) -> None:
+    conn.execute(
+        """
+        UPDATE cards
+        SET russian = ?, transcription = ?, example_es = ?, example_ru = ?,
+            enriched = 1
+        WHERE id = ?
+        """,
+        (russian, transcription, example_es, example_ru, card_id),
+    )
+    conn.commit()
