@@ -74,7 +74,7 @@ async def _send_voice(message: Message, spanish: str) -> None:
         await tts.synthesize(spanish, tmp)
         with open(tmp, "rb") as fh:
             await message.answer_audio(
-                BufferedInputFile(fh.read(), filename="word.mp3")
+                BufferedInputFile(fh.read(), filename="произношение.mp3")
             )
     except (tts.TTSError, OSError, TelegramBadRequest):
         await message.answer("🔇 (озвучка временно недоступна)")

@@ -37,7 +37,7 @@ async def _send_voice(message: Message, conn: sqlite3.Connection, card) -> None:
         await tts.synthesize(card["spanish"], tmp)
         with open(tmp, "rb") as fh:
             sent = await message.answer_audio(
-                BufferedInputFile(fh.read(), filename="word.mp3")
+                BufferedInputFile(fh.read(), filename="произношение.mp3")
             )
         db.set_audio_file_id(conn, card["id"], sent.audio.file_id)
     except (tts.TTSError, OSError, TelegramBadRequest):
