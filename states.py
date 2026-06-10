@@ -5,7 +5,6 @@ from aiogram.fsm.state import State, StatesGroup
 
 class AddCard(StatesGroup):
     waiting_for_text = State()
-    waiting_for_correction = State()
 
 
 class Training(StatesGroup):

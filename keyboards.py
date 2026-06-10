@@ -41,7 +41,6 @@ def grade_keyboard() -> InlineKeyboardMarkup:
 def save_card_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ Да", callback_data="save:yes"),
-        InlineKeyboardButton(text="✏️ Исправить перевод", callback_data="save:edit"),
         InlineKeyboardButton(text="❌ Нет", callback_data="save:no"),
     ]])
 

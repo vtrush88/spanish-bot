@@ -103,39 +103,6 @@ async def save_yes(
     await call.answer()
 
 
-@router.callback_query(F.data == "save:edit")
-async def save_edit(call: CallbackQuery, state: FSMContext) -> None:
-    await state.set_state(AddCard.waiting_for_correction)
-    await call.message.answer("Напиши свой перевод:")
-    await call.answer()
-
-
-@router.message(AddCard.waiting_for_correction, F.text)
-async def receive_correction(
-    message: Message, state: FSMContext, conn: sqlite3.Connection
-) -> None:
-    if message.text.strip() in _MENU_BUTTONS:
-        await state.clear()
-        await message.answer("Окей, отменила 🙂 Нажми кнопку ещё раз.")
-        return
-    data = await state.get_data()
-    stored = data.get("card")
-    if stored is None:
-        await state.clear()
-        await message.answer("Что-то пошло не так, начни добавление заново 🙂")
-        return
-    card = dict(stored)
-    card["russian"] = message.text.strip()
-    db.add_card(
-        conn, user_id=message.from_user.id, kind=card["kind"],
-        spanish=card["spanish"], russian=card["russian"],
-        transcription=card["transcription"], example_es=card["example_es"],
-        example_ru=card["example_ru"], enriched=True, today=date.today(),
-    )
-    await state.clear()
-    await message.answer("Сохранил с твоим переводом! ✅")
-
-
 @router.callback_query(F.data == "save:no")
 async def save_no(call: CallbackQuery, state: FSMContext) -> None:
     await state.clear()
