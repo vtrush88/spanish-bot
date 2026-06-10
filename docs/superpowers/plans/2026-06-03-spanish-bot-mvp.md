@@ -1,5 +1,12 @@
 # Spanish Bot MVP — Implementation Plan
 
+> **СТАТУС: ВЫПОЛНЕН ПОЛНОСТЬЮ (2026-06-10).** Все 17 задач реализованы, слиты в
+> `main` и проверены вживую. Документ исторический — НЕ исполнять повторно.
+> Актуальное состояние кода и решения — в `AGENTS.md`; актуальное поведение — в
+> спеке (`docs/superpowers/specs/2026-06-02-spanish-bot-design.md`). Код с тех пор
+> ушёл вперёд (голосовые вместо audio, редизайн словаря, multi-user-safe и др.) —
+> при расхождении прав AGENTS.md/спека, а не этот план.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Telegram-бот — персональный тренажёр испанского для мамы: она добавляет слова/фразы, бот обогащает их (перевод, произношение аудио + русская транскрипция, пример) через Claude и тренирует тремя режимами (карточки с интервальным повторением, проверка перевода, аудирование).
