@@ -1,51 +1,24 @@
 from __future__ import annotations
 
-import os
 import sqlite3
-import tempfile
 from datetime import date
 
 from aiogram import F, Router
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message
 
 import db
 import formatting
 import intents
 import keyboards
 import session
-from services import grading, srs, tts
+import voice
+from services import grading, srs
 from states import Training
 
 router = Router()
 EMPTY = ("На сегодня всё повторили! 🎉 Можешь добавить новые слова "
          "или зайти позже.")
-
-
-async def _send_voice(message: Message, conn: sqlite3.Connection, card) -> None:
-    """Send cached audio by file_id, else synthesize and cache the file_id.
-
-    Sent as a voice message (Bot API ≥7.2 accepts MP3 in sendVoice): voice
-    bubbles don't join the chat-wide music playlist, so playing one word
-    never auto-plays the others. Cached file_ids are voice-type.
-    """
-    if card["audio_file_id"]:
-        await message.answer_voice(card["audio_file_id"])
-        return
-    tmp = os.path.join(tempfile.gettempdir(), f"tts_{card['id']}.mp3")
-    try:
-        await tts.synthesize(card["spanish"], tmp)
-        with open(tmp, "rb") as fh:
-            sent = await message.answer_voice(
-                BufferedInputFile(fh.read(), filename="произношение.mp3")
-            )
-        db.set_audio_file_id(conn, card["id"], sent.voice.file_id)
-    except (tts.TTSError, OSError, TelegramBadRequest):
-        pass  # text card already shown; audio is best-effort
-    finally:
-        if os.path.exists(tmp):
-            os.remove(tmp)
 
 
 async def _show_next_flashcard(
@@ -64,7 +37,7 @@ async def _show_next_flashcard(
         await message.answer("Ты повторила все слова, умница ❤️", reply_markup=keyboards.main_menu())
         return
     await message.answer(f"🎴 {card['spanish']}")
-    await _send_voice(message, conn, card)
+    await voice.send_card_voice(message, conn, card)
     await message.answer("…вспомни перевод…",
                          reply_markup=keyboards.reveal_keyboard())
 
@@ -225,7 +198,7 @@ async def _ask_next_listen(
                              reply_markup=keyboards.main_menu())
         return
     await message.answer("🔊 Что это за слово? Напиши, что услышала:")
-    await _send_voice(message, conn, card)
+    await voice.send_card_voice(message, conn, card)
 
 
 @router.message(F.text == keyboards.BTN_LISTEN)

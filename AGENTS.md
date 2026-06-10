@@ -35,9 +35,11 @@ bot.py            точка входа: Dispatcher, MemoryStorage(FSM), access-
                   (ALLOWED_USER_IDS), внедряет conn+anthropic, include_router, polling
 config.py         env: TELEGRAM_TOKEN, ANTHROPIC_API_KEY, ALLOWED_USER_IDS
 db.py             SQLite: cards (15 полей), CRUD, get_due_cards, card_exists (дедуп)
-handlers/menu.py     /start, главное меню, «Мой словарь» (список+пагинация+удаление)
-handlers/add.py      добавление: enrich → дедуп → превью+аудио → save / исправить перевод
+handlers/menu.py     /start, главное меню, «Мой словарь» (5/стр, тап по номеру →
+                     карточка с аудио и удалением; страница ездит в callback'ах)
+handlers/add.py      добавление: enrich → дедуп → превью+аудио → сохранить да/нет
 handlers/training.py 3 режима: карточки / проверка перевода / аудирование
+voice.py          общий send_card_voice: голосовое из кэша file_id или edge-tts
 services/enrichment.py  Claude tool-use → {kind,spanish,russian,transcription,example_*}
 services/grading.py     Claude tool-use → {verdict,correct_spanish,note} (мягкая проверка)
 services/tts.py         edge-tts → MP3 (см. грабли ниже)

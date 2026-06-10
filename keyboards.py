@@ -49,14 +49,15 @@ def save_card_keyboard() -> InlineKeyboardMarkup:
     ]])
 
 
-PAGE_SIZE = 10
+PAGE_SIZE = 5
 
 
 def vocab_keyboard(cards: list, page: int, total: int) -> InlineKeyboardMarkup:
+    """One row of number buttons (open a card) + nav arrows below."""
     rows = [[InlineKeyboardButton(
-        text=f"🗑 {i + 1 + page * PAGE_SIZE}",
-        callback_data=f"del:{c['id']}",
-    )] for i, c in enumerate(cards)]
+        text=str(i + 1 + page * PAGE_SIZE),
+        callback_data=f"card:{c['id']}:{page}",
+    ) for i, c in enumerate(cards)]]
     nav = []
     if page > 0:
         nav.append(InlineKeyboardButton(text="◀", callback_data=f"vocab:{page - 1}"))
@@ -65,3 +66,10 @@ def vocab_keyboard(cards: list, page: int, total: int) -> InlineKeyboardMarkup:
     if nav:
         rows.append(nav)
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def card_detail_keyboard(card_id: int, page: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del:{card_id}:{page}"),
+        InlineKeyboardButton(text="◀ К списку", callback_data=f"vocab:{page}"),
+    ]])

@@ -9,6 +9,7 @@ from aiogram.types import CallbackQuery, Message
 import db
 import formatting
 import keyboards
+import voice
 
 router = Router()
 
@@ -27,14 +28,18 @@ async def cmd_start(message: Message) -> None:
 
 
 def _render_page(conn: sqlite3.Connection, user_id: int, page: int):
+    """Render one vocab page; clamps page after deletions shrink the list."""
     total = db.count_cards(conn, user_id)
+    if total == 0:
+        return "Словарь пуст. Добавь первое слово через «➕ Добавить слово».", None
+    pages = (total + keyboards.PAGE_SIZE - 1) // keyboards.PAGE_SIZE
+    page = max(0, min(page, pages - 1))
     cards = db.list_cards(conn, user_id, limit=keyboards.PAGE_SIZE,
                           offset=page * keyboards.PAGE_SIZE)
-    if not cards:
-        return "Словарь пуст. Добавь первое слово через «➕ Добавить слово».", None
     lines = [formatting.word_list_line(i + 1 + page * keyboards.PAGE_SIZE, c)
              for i, c in enumerate(cards)]
-    text = "📖 Твой словарь:\n\n" + "\n".join(lines)
+    text = (formatting.vocab_title(page, pages, total)
+            + "\n\n" + "\n".join(lines))
     return text, keyboards.vocab_keyboard(cards, page, total)
 
 
@@ -46,16 +51,35 @@ async def show_vocab(message: Message, conn: sqlite3.Connection) -> None:
 
 @router.callback_query(F.data.startswith("vocab:"))
 async def paginate_vocab(call: CallbackQuery, conn: sqlite3.Connection) -> None:
+    """Page navigation; also the «back to list» button on a card."""
     page = int(call.data.split(":")[1])
     text, kb = _render_page(conn, call.from_user.id, page)
     await call.message.edit_text(text, reply_markup=kb)
     await call.answer()
 
 
+@router.callback_query(F.data.startswith("card:"))
+async def show_card(call: CallbackQuery, conn: sqlite3.Connection) -> None:
+    _, card_id, page = call.data.split(":")
+    card = db.get_card(conn, int(card_id))
+    if card is None:
+        text, kb = _render_page(conn, call.from_user.id, int(page))
+        await call.message.edit_text(text, reply_markup=kb)
+        await call.answer("Это слово уже удалено")
+        return
+    await call.message.edit_text(
+        formatting.card_preview(card),
+        reply_markup=keyboards.card_detail_keyboard(card["id"], int(page)),
+    )
+    await voice.send_card_voice(call.message, conn, card)
+    await call.answer()
+
+
 @router.callback_query(F.data.startswith("del:"))
 async def delete_word(call: CallbackQuery, conn: sqlite3.Connection) -> None:
-    card_id = int(call.data.split(":")[1])
-    db.delete_card(conn, card_id)
-    text, kb = _render_page(conn, call.from_user.id, 0)
+    parts = call.data.split(":")
+    page = int(parts[2]) if len(parts) > 2 else 0
+    db.delete_card(conn, int(parts[1]))
+    text, kb = _render_page(conn, call.from_user.id, page)
     await call.message.edit_text(text, reply_markup=kb)
     await call.answer("Удалено")
