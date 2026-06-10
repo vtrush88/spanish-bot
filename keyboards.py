@@ -13,6 +13,10 @@ BTN_TRANSLATE = "✍️ Проверить себя"
 BTN_LISTEN = "🎧 Аудирование"
 BTN_VOCAB = "📖 Мой словарь"
 
+# All reply-menu button texts. Answer handlers must exclude these so a menu
+# tap mid-training switches modes instead of being graded as an answer.
+MENU_BUTTONS = {BTN_ADD, BTN_FLASHCARDS, BTN_TRANSLATE, BTN_LISTEN, BTN_VOCAB}
+
 
 def main_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(

@@ -154,7 +154,7 @@ async def start_translate(
     await _ask_next_translation(message, state, conn)
 
 
-@router.message(Training.translate, F.text)
+@router.message(Training.translate, F.text, ~F.text.in_(keyboards.MENU_BUTTONS))
 async def check_translation(
     message: Message, state: FSMContext, conn: sqlite3.Connection, anthropic
 ) -> None:
@@ -241,7 +241,7 @@ async def start_listen(
     await _ask_next_listen(message, state, conn)
 
 
-@router.message(Training.listen, F.text)
+@router.message(Training.listen, F.text, ~F.text.in_(keyboards.MENU_BUTTONS))
 async def check_listen(
     message: Message, state: FSMContext, conn: sqlite3.Connection
 ) -> None:

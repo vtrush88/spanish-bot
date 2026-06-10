@@ -19,11 +19,6 @@ from states import AddCard
 
 router = Router()
 
-_MENU_BUTTONS = {
-    keyboards.BTN_ADD, keyboards.BTN_FLASHCARDS, keyboards.BTN_TRANSLATE,
-    keyboards.BTN_LISTEN, keyboards.BTN_VOCAB,
-}
-
 
 @router.message(F.text == keyboards.BTN_ADD)
 async def start_add(message: Message, state: FSMContext) -> None:
@@ -37,7 +32,7 @@ async def receive_text(
     anthropic: Anthropic,
 ) -> None:
     text = message.text.strip()
-    if text in _MENU_BUTTONS:
+    if text in keyboards.MENU_BUTTONS:
         await state.clear()
         await message.answer("Окей, отменила добавление 🙂 Нажми кнопку ещё раз.")
         return
