@@ -66,14 +66,15 @@ async def receive_text(
 async def _send_voice(message: Message, spanish: str) -> None:
     """Best-effort audio; silent text-only fallback on failure.
 
-    edge-tts produces MP3, which Telegram voice messages reject, so we send
-    it as an audio file (answer_audio) instead of answer_voice.
+    Sent as a voice message (Bot API ≥7.2 accepts MP3 in sendVoice): voice
+    bubbles don't join the chat-wide music playlist, so playing one word
+    never auto-plays the others.
     """
     tmp = os.path.join(tempfile.gettempdir(), f"tts_{abs(hash(spanish))}.mp3")
     try:
         await tts.synthesize(spanish, tmp)
         with open(tmp, "rb") as fh:
-            await message.answer_audio(
+            await message.answer_voice(
                 BufferedInputFile(fh.read(), filename="произношение.mp3")
             )
     except (tts.TTSError, OSError, TelegramBadRequest):

@@ -26,20 +26,21 @@ EMPTY = ("На сегодня всё повторили! 🎉 Можешь до�
 async def _send_voice(message: Message, conn: sqlite3.Connection, card) -> None:
     """Send cached audio by file_id, else synthesize and cache the file_id.
 
-    edge-tts produces MP3 (rejected by Telegram voice messages), so we send it
-    as an audio file (answer_audio) and cache the returned audio file_id.
+    Sent as a voice message (Bot API ≥7.2 accepts MP3 in sendVoice): voice
+    bubbles don't join the chat-wide music playlist, so playing one word
+    never auto-plays the others. Cached file_ids are voice-type.
     """
     if card["audio_file_id"]:
-        await message.answer_audio(card["audio_file_id"])
+        await message.answer_voice(card["audio_file_id"])
         return
     tmp = os.path.join(tempfile.gettempdir(), f"tts_{card['id']}.mp3")
     try:
         await tts.synthesize(card["spanish"], tmp)
         with open(tmp, "rb") as fh:
-            sent = await message.answer_audio(
+            sent = await message.answer_voice(
                 BufferedInputFile(fh.read(), filename="произношение.mp3")
             )
-        db.set_audio_file_id(conn, card["id"], sent.audio.file_id)
+        db.set_audio_file_id(conn, card["id"], sent.voice.file_id)
     except (tts.TTSError, OSError, TelegramBadRequest):
         pass  # text card already shown; audio is best-effort
     finally:
