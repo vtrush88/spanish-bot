@@ -35,7 +35,7 @@ async def _show_next_flashcard(
     await state.update_data(queue=queue)
     if not queue:
         await state.clear()
-        await message.answer("Ты повторила все слова, умница ❤️", reply_markup=keyboards.main_menu())
+        await message.answer("Все слова повторены — ты молодец! ❤️", reply_markup=keyboards.main_menu())
         return
     await message.answer(f"🎴 {card['spanish']}")
     await voice.send_card_voice(message, conn, card)
@@ -109,7 +109,7 @@ async def _ask_next_translation(
     await state.update_data(queue=queue)
     if not queue:
         await state.clear()
-        await message.answer("Ты повторила все слова, умница ❤️",
+        await message.answer("Все слова повторены — ты молодец! ❤️",
                              reply_markup=keyboards.main_menu())
         return
     await message.answer(f"Как по-испански: «{card['russian']}»?")
@@ -197,10 +197,10 @@ async def _ask_next_listen(
     await state.update_data(queue=queue)
     if not queue:
         await state.clear()
-        await message.answer("Ты повторила все слова, умница ❤️",
+        await message.answer("Все слова повторены — ты молодец! ❤️",
                              reply_markup=keyboards.main_menu())
         return
-    await message.answer("🔊 Что это за слово? Напиши, что услышала:")
+    await message.answer("🔊 Что это за слово? Послушай и напиши:")
     await voice.send_card_voice(message, conn, card)
 
 

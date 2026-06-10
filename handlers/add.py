@@ -35,7 +35,7 @@ async def receive_text(
     text = message.text.strip()
     if text in keyboards.MENU_BUTTONS:
         await state.clear()
-        await message.answer("Окей, отменила добавление 🙂 Нажми кнопку ещё раз.")
+        await message.answer("Окей, отменяю добавление 🙂 Нажми кнопку ещё раз.")
         return
     try:
         # to_thread: the sync Anthropic call must not block the event loop
@@ -97,7 +97,7 @@ async def save_yes(
         example_ru=card["example_ru"], enriched=True, today=date.today(),
     )
     await state.clear()
-    await call.message.answer("Сохранил! ✅")
+    await call.message.answer("Сохранено! ✅")
     await call.answer()
 
 
