@@ -63,8 +63,16 @@ def test_list_and_delete(conn):
     assert db.count_cards(conn, 111) == 2
     cards = db.list_cards(conn, user_id=111, limit=10, offset=0)
     assert len(cards) == 2
-    db.delete_card(conn, cid)
+    db.delete_card(conn, cid, user_id=111)
     assert db.count_cards(conn, 111) == 1
+
+
+def test_delete_card_scoped_to_owner(conn):
+    cid = _add(conn, "uno", "один", date(2026, 6, 3))
+    db.delete_card(conn, cid, user_id=999)  # someone else's id
+    assert db.get_card(conn, cid) is not None  # card survives
+    db.delete_card(conn, cid, user_id=111)
+    assert db.get_card(conn, cid) is None
 
 
 def test_set_audio_and_enrich(conn):

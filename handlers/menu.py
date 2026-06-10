@@ -105,7 +105,7 @@ async def delete_word(
     await _remove_card_voice(call, state)
     parts = call.data.split(":")
     page = int(parts[2]) if len(parts) > 2 else 0
-    db.delete_card(conn, int(parts[1]))
+    db.delete_card(conn, int(parts[1]), user_id=call.from_user.id)
     text, kb = _render_page(conn, call.from_user.id, page)
     await call.message.edit_text(text, reply_markup=kb)
     await call.answer("Удалено")

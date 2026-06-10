@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 import sqlite3
 import tempfile
@@ -37,7 +38,8 @@ async def receive_text(
         await message.answer("Окей, отменила добавление 🙂 Нажми кнопку ещё раз.")
         return
     try:
-        card = enrichment.enrich(anthropic, text)
+        # to_thread: the sync Anthropic call must not block the event loop
+        card = await asyncio.to_thread(enrichment.enrich, anthropic, text)
     except enrichment.EnrichmentError:
         # Stay in waiting_for_text; next message retries. Save-as-is +
         # later re-enrichment is deferred (see out-of-MVP improvements).

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 from datetime import date
 
@@ -147,7 +148,9 @@ async def check_translation(
         await message.answer(formatting.card_preview(card))
     else:
         try:
-            verdict = grading.grade(
+            # to_thread: the sync Anthropic call must not block the event loop
+            verdict = await asyncio.to_thread(
+                grading.grade,
                 anthropic, prompt_ru=card["russian"],
                 expected_es=card["spanish"], answer=message.text.strip(),
             )

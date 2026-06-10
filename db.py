@@ -114,8 +114,10 @@ def count_cards(conn: sqlite3.Connection, user_id: int) -> int:
     return int(cur.fetchone()["n"])
 
 
-def delete_card(conn: sqlite3.Connection, card_id: int) -> None:
-    conn.execute("DELETE FROM cards WHERE id = ?", (card_id,))
+def delete_card(conn: sqlite3.Connection, card_id: int, user_id: int) -> None:
+    """Delete a card only if it belongs to user_id (no cross-user deletes)."""
+    conn.execute("DELETE FROM cards WHERE id = ? AND user_id = ?",
+                 (card_id, user_id))
     conn.commit()
 
 
