@@ -11,17 +11,19 @@ import db
 from services import tts
 
 
-async def send_card_voice(message: Message, conn: sqlite3.Connection, card) -> None:
+async def send_card_voice(
+    message: Message, conn: sqlite3.Connection, card
+) -> Message | None:
     """Send cached audio by file_id, else synthesize and cache the file_id.
 
     Sent as a voice message (Bot API ≥7.2 accepts MP3 in sendVoice): voice
     bubbles don't join the chat-wide music playlist, so playing one word
     never auto-plays the others. Cached file_ids are voice-type.
-    Best-effort: on failure the text card is already shown, so we stay silent.
+    Best-effort: on failure the text card is already shown, so we stay
+    silent and return None. Returns the sent voice Message otherwise.
     """
     if card["audio_file_id"]:
-        await message.answer_voice(card["audio_file_id"])
-        return
+        return await message.answer_voice(card["audio_file_id"])
     tmp = os.path.join(tempfile.gettempdir(), f"tts_{card['id']}.mp3")
     try:
         await tts.synthesize(card["spanish"], tmp)
@@ -30,8 +32,9 @@ async def send_card_voice(message: Message, conn: sqlite3.Connection, card) -> N
                 BufferedInputFile(fh.read(), filename="произношение.mp3")
             )
         db.set_audio_file_id(conn, card["id"], sent.voice.file_id)
+        return sent
     except (tts.TTSError, OSError, TelegramBadRequest):
-        pass
+        return None
     finally:
         if os.path.exists(tmp):
             os.remove(tmp)

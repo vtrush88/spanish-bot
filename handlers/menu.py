@@ -3,7 +3,9 @@ from __future__ import annotations
 import sqlite3
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 import db
@@ -49,9 +51,25 @@ async def show_vocab(message: Message, conn: sqlite3.Connection) -> None:
     await message.answer(text, reply_markup=kb)
 
 
+async def _remove_card_voice(call: CallbackQuery, state: FSMContext) -> None:
+    """Delete the voice message left by a previously opened card, if any."""
+    data = await state.get_data()
+    msg_id = data.get("vocab_voice_msg_id")
+    if not msg_id:
+        return
+    await state.update_data(vocab_voice_msg_id=None)
+    try:
+        await call.message.bot.delete_message(call.message.chat.id, msg_id)
+    except TelegramBadRequest:
+        pass  # already gone or too old — nothing to clean up
+
+
 @router.callback_query(F.data.startswith("vocab:"))
-async def paginate_vocab(call: CallbackQuery, conn: sqlite3.Connection) -> None:
+async def paginate_vocab(
+    call: CallbackQuery, state: FSMContext, conn: sqlite3.Connection
+) -> None:
     """Page navigation; also the «back to list» button on a card."""
+    await _remove_card_voice(call, state)
     page = int(call.data.split(":")[1])
     text, kb = _render_page(conn, call.from_user.id, page)
     await call.message.edit_text(text, reply_markup=kb)
@@ -59,7 +77,10 @@ async def paginate_vocab(call: CallbackQuery, conn: sqlite3.Connection) -> None:
 
 
 @router.callback_query(F.data.startswith("card:"))
-async def show_card(call: CallbackQuery, conn: sqlite3.Connection) -> None:
+async def show_card(
+    call: CallbackQuery, state: FSMContext, conn: sqlite3.Connection
+) -> None:
+    await _remove_card_voice(call, state)
     _, card_id, page = call.data.split(":")
     card = db.get_card(conn, int(card_id))
     if card is None:
@@ -71,12 +92,17 @@ async def show_card(call: CallbackQuery, conn: sqlite3.Connection) -> None:
         formatting.card_preview(card),
         reply_markup=keyboards.card_detail_keyboard(card["id"], int(page)),
     )
-    await voice.send_card_voice(call.message, conn, card)
+    sent = await voice.send_card_voice(call.message, conn, card)
+    if sent is not None:
+        await state.update_data(vocab_voice_msg_id=sent.message_id)
     await call.answer()
 
 
 @router.callback_query(F.data.startswith("del:"))
-async def delete_word(call: CallbackQuery, conn: sqlite3.Connection) -> None:
+async def delete_word(
+    call: CallbackQuery, state: FSMContext, conn: sqlite3.Connection
+) -> None:
+    await _remove_card_voice(call, state)
     parts = call.data.split(":")
     page = int(parts[2]) if len(parts) > 2 else 0
     db.delete_card(conn, int(parts[1]))
