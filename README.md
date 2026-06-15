@@ -19,5 +19,6 @@
 
 ## Деплой
 
-Управляемый хост (Railway / Fly.io): задеплоить процесс `python bot.py`,
-проставить переменные окружения, том для `spanish_bot.db`.
+VPS (DigitalOcean) + systemd. Пошаговый ран-бук:
+[`docs/superpowers/deploy.md`](docs/superpowers/deploy.md). Дизайн:
+`docs/superpowers/specs/2026-06-15-spanish-bot-deploy-design.md`.

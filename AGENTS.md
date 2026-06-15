@@ -68,6 +68,10 @@ python bot.py               # long-polling
 Тесты: `.venv/bin/pytest -q` (ожидается 65 passed).
 Секреты (`.env`), БД (`spanish_bot.db`), `.venv` — в `.gitignore`, не коммитить.
 
+**Деплой на сервер:** пошаговый ран-бук — `docs/superpowers/deploy.md`
+(VPS/DigitalOcean + systemd + ночной бэкап). На сервере бот запущен один —
+локально с тем же токеном не поднимать (TelegramConflictError).
+
 ## Как вносить изменения (чек-лист, выведен практикой 2026-06-10)
 
 1. **Правка** (для чистой логики — сначала падающий тест, TDD).
