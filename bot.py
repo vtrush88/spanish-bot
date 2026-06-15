@@ -11,14 +11,11 @@ import config
 import db
 from handlers import add, menu, training
 
-DB_PATH = "spanish_bot.db"
-
-
 async def main() -> None:
     logging.basicConfig(level=logging.INFO)
     cfg = config.load()
 
-    conn = db.connect(DB_PATH)
+    conn = db.connect(cfg.db_path)
     db.init_db(conn)
     anthropic_client = Anthropic(api_key=cfg.anthropic_api_key)
 

@@ -11,6 +11,7 @@ class Config:
     telegram_token: str
     anthropic_api_key: str
     allowed_user_ids: set[int]
+    db_path: str
 
 
 def _require(name: str) -> str:
@@ -28,4 +29,5 @@ def load() -> Config:
         telegram_token=_require("TELEGRAM_TOKEN"),
         anthropic_api_key=_require("ANTHROPIC_API_KEY"),
         allowed_user_ids=ids,
+        db_path=os.environ.get("DB_PATH", "spanish_bot.db"),
     )

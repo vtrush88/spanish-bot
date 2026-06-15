@@ -22,3 +22,23 @@ def test_missing_required_raises(monkeypatch):
     import pytest
     with pytest.raises(ValueError, match="TELEGRAM_TOKEN"):
         config.load()
+
+
+def test_load_defaults_db_path(monkeypatch):
+    monkeypatch.setattr(config, "load_dotenv", lambda *a, **k: None)
+    monkeypatch.setenv("TELEGRAM_TOKEN", "t")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    monkeypatch.setenv("ALLOWED_USER_IDS", "1")
+    monkeypatch.delenv("DB_PATH", raising=False)
+    cfg = config.load()
+    assert cfg.db_path == "spanish_bot.db"
+
+
+def test_load_reads_db_path(monkeypatch):
+    monkeypatch.setattr(config, "load_dotenv", lambda *a, **k: None)
+    monkeypatch.setenv("TELEGRAM_TOKEN", "t")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
+    monkeypatch.setenv("ALLOWED_USER_IDS", "1")
+    monkeypatch.setenv("DB_PATH", "/var/lib/spanish-bot/spanish_bot.db")
+    cfg = config.load()
+    assert cfg.db_path == "/var/lib/spanish-bot/spanish_bot.db"
