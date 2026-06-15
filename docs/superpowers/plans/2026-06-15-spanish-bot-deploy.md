@@ -439,8 +439,10 @@ ls -1 ~/backups        # появился spanish_bot-<сегодня>.db
 ```
 
 ## 10. Проверка устойчивости
+Ребут — под root (sudoers у `spanishbot` разрешает только restart/status сервиса,
+не `reboot`):
 ```bash
-sudo reboot
+ssh root@<DROPLET_IP> reboot
 # через минуту:
 ssh spanishbot@<DROPLET_IP> 'systemctl is-active spanish-bot'   # active
 ```
