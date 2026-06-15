@@ -175,6 +175,17 @@ def test_backup_rotation_keeps_seven(tmp_path):
     # today's snapshot (2026-06-..) is newest and kept; two oldest removed
     assert "spanish_bot-2026-05-01.db" not in remaining
     assert "spanish_bot-2026-05-02.db" not in remaining
+
+
+def test_backup_same_day_rerun_is_idempotent(tmp_path):
+    src = tmp_path / "spanish_bot.db"
+    _seed_db(src, 2)
+    backups = tmp_path / "backups"
+    # twice on the same day must succeed (VACUUM INTO refuses to overwrite)
+    subprocess.run(["bash", str(SCRIPT), str(src), str(backups)], check=True)
+    subprocess.run(["bash", str(SCRIPT), str(src), str(backups)], check=True)
+    made = list(backups.glob("spanish_bot-*.db"))
+    assert len(made) == 1  # one snapshot per day, overwritten cleanly
 ```
 
 - [ ] **Step 2: Прогнать — убедиться, что падает**
@@ -197,7 +208,10 @@ mkdir -p "$BACKUP_DIR"
 DEST="$BACKUP_DIR/spanish_bot-$(date +%Y-%m-%d).db"
 
 # VACUUM INTO is a consistent snapshot even while the bot is writing —
-# never plain cp of a live SQLite file.
+# never plain cp of a live SQLite file. It REFUSES to overwrite, so a
+# second run on the same day would fail — drop today's file first to stay
+# idempotent (one snapshot per day).
+rm -f "$DEST"
 sqlite3 "$DB_PATH" "VACUUM INTO '$DEST'"
 
 # Keep the 7 newest by name (dated names sort chronologically); delete older.
@@ -210,12 +224,12 @@ done
 - [ ] **Step 4: Сделать исполняемым и прогнать тесты**
 
 Run: `chmod +x scripts/backup-db.sh && .venv/bin/pytest tests/test_backup_script.py -q`
-Expected: PASS (2 passed).
+Expected: PASS (3 passed).
 
 - [ ] **Step 5: Прогнать весь набор**
 
 Run: `.venv/bin/pytest -q`
-Expected: PASS (69 passed).
+Expected: PASS (70 passed).
 
 - [ ] **Step 6: Коммит**
 
@@ -311,6 +325,30 @@ apt update && apt install -y python3.12 python3.12-venv git sqlite3
 ufw allow OpenSSH && ufw --force enable
 ```
 
+Дать `spanishbot` SSH-доступ (иначе `scp spanishbot@...` и вход не сработают —
+у нового пользователя нет `authorized_keys`). Переиспользуем ключ Victoria,
+который DigitalOcean уже положил для `root`:
+```bash
+mkdir -p /home/spanishbot/.ssh
+cp ~/.ssh/authorized_keys /home/spanishbot/.ssh/authorized_keys
+chown -R spanishbot:spanishbot /home/spanishbot/.ssh
+chmod 700 /home/spanishbot/.ssh
+chmod 600 /home/spanishbot/.ssh/authorized_keys
+```
+
+Ограниченный sudoers — чтобы рутинные `restart`/`status` работали из-под
+`spanishbot` без полного root (у `--disabled-password` пароля и sudo нет):
+```bash
+cat > /etc/sudoers.d/spanishbot-service <<'EOF'
+spanishbot ALL=(root) NOPASSWD: /usr/bin/systemctl restart spanish-bot, /usr/bin/systemctl status spanish-bot
+EOF
+chmod 440 /etc/sudoers.d/spanishbot-service
+visudo -c        # проверка синтаксиса sudoers
+
+# чтение журнала сервиса без sudo — членством в группе (надёжнее wildcard в sudoers):
+usermod -aG systemd-journal spanishbot   # вступит в силу при следующем входе spanishbot
+```
+
 ## 4. Deploy key — доступ сервера к приватному репо (read-only)
 ```bash
 su - spanishbot
@@ -348,12 +386,24 @@ cd "<MAC_REPO>"
 scp .env spanishbot@<DROPLET_IP>:/home/spanishbot/spanish-bot/.env
 scp spanish_bot.db spanishbot@<DROPLET_IP>:/home/spanishbot/spanish-bot/spanish_bot.db
 ```
-На сервере выставить права/владельца и абсолютный путь к БД:
+Файлы прилетели в домашнюю папку `spanishbot`, поэтому уже принадлежат ему —
+`chown` не нужен (и под не-root упал бы). На сервере **под `spanishbot`** только
+ужесточить права `.env` и прописать абсолютный путь к БД ровно одной строкой:
 ```bash
 chmod 600 ~/spanish-bot/.env
-chown spanishbot:spanishbot ~/spanish-bot/.env ~/spanish-bot/spanish_bot.db
-echo "DB_PATH=/home/spanishbot/spanish-bot/spanish_bot.db" >> ~/spanish-bot/.env
+
+# DB_PATH: заменить существующую строку или добавить — без дублей
+# (.env.example уже содержит DB_PATH, локальный .env мог его принести)
+cd ~/spanish-bot
+if grep -q '^DB_PATH=' .env; then
+    sed -i 's#^DB_PATH=.*#DB_PATH=/home/spanishbot/spanish-bot/spanish_bot.db#' .env
+else
+    echo "DB_PATH=/home/spanishbot/spanish-bot/spanish_bot.db" >> .env
+fi
+grep -c '^DB_PATH=' .env    # должно быть РОВНО 1
 ```
+(Если после `scp` файлы вдруг оказались root-owned — выполнить под root
+`chown spanishbot:spanishbot ~spanishbot/spanish-bot/.env ~spanishbot/spanish-bot/spanish_bot.db`.)
 
 ## 7. СВЕРКА МИГРАЦИИ (до запуска сервиса!)
 ```bash
@@ -493,7 +543,14 @@ Victoria или Claude по её команде, без печати значе�
 - [ ] **Step 3:** Раздел 8 — `systemctl enable --now`, `systemd-analyze verify` чистый, статус `active`, в логах `Start polling` без конфликта. Погасить локального бота навсегда.
 - [ ] **Step 4:** Раздел 9 — cron-бэкап, разовый прогон даёт файл в `~/backups`.
 - [ ] **Step 5:** Раздел 10 — `reboot`, бот сам поднялся; живой тест в Telegram (старые слова на месте, добавление/тренировка/аудио работают).
-- [ ] **Step 6:** Обновить статус в `AGENTS.md` (бэклог: «постоянный хостинг» → сделано) и в ваултовой overview-заметке; закоммитить.
+- [ ] **Step 6:** Обновить статус — **двумя отдельными коммитами в двух репозиториях**
+  (код и заметки живут раздельно):
+  1. в `app/` (из папки репо): `app/AGENTS.md` — бэклог «постоянный хостинг» → сделано,
+     `git -C "<MAC_REPO>" commit`;
+  2. из корня vault: overview-заметка
+     `Projects/Spanish Bot/{spanish-bot} {plan} project overview – 2026-06-03.md` —
+     статус деплоя, отдельный `git commit` из корня vault.
+  И не забыть `git push` в `app/` (теперь есть origin).
 
 ---
 
