@@ -44,6 +44,11 @@ def test_backup_rotation_keeps_seven(tmp_path):
     # today's snapshot (2026-06-..) is newest and kept; two oldest removed
     assert "spanish_bot-2026-05-01.db" not in remaining
     assert "spanish_bot-2026-05-02.db" not in remaining
+    # Verify both ends of the keep window: today's newest + oldest survivor
+    today_name = f"spanish_bot-{date.today().strftime('%Y-%m-%d')}.db"
+    assert today_name in remaining          # today's snapshot kept
+    assert "spanish_bot-2026-05-08.db" in remaining   # newest of the pre-seeded kept
+    assert "spanish_bot-2026-05-03.db" in remaining   # oldest survivor (05-01 and 05-02 deleted)
 
 
 def test_backup_same_day_rerun_is_idempotent(tmp_path):
