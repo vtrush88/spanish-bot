@@ -161,7 +161,7 @@ async def check_translation(
             )
             ok = verdict["verdict"] in ("correct", "typo")
             if verdict["verdict"] == "correct":
-                await message.answer(f"✅ Верно! {verdict['note']}")
+                await message.answer("✅ Верно!")
             elif verdict["verdict"] == "typo":
                 await message.answer(
                     f"✅ Почти! Правильно: {verdict['correct_spanish']} "
