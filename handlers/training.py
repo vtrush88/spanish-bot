@@ -145,7 +145,7 @@ async def check_translation(
     if giveup:
         ok = False
         await message.answer("Ничего страшного ❤️ Запомним вместе:")
-        await message.answer(formatting.card_preview(card))
+        await message.answer(formatting.card_preview(card), parse_mode="HTML")
     elif grading.answers_match(message.text, card["spanish"]):
         # Right word, only case/space differs (e.g. phone auto-capitalised the
         # first letter) — accept outright, no need to bother Claude.
@@ -239,7 +239,7 @@ async def check_listen(
     if giveup:
         ok = False
         await message.answer("Ничего страшного ❤️ Вот это слово:")
-        await message.answer(formatting.card_preview(card))
+        await message.answer(formatting.card_preview(card), parse_mode="HTML")
     else:
         ok = message.text.strip().lower() == card["spanish"].lower()
         if ok:

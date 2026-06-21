@@ -1,12 +1,22 @@
 from __future__ import annotations
 
+import html
+
 
 def card_preview(card: dict) -> str:
+    """Word card as Telegram HTML — send with parse_mode="HTML".
+
+    The Spanish word is bold; every interpolated field is HTML-escaped so a
+    literal <, > or & in the data can't break Telegram's HTML parser.
+    """
+    def esc(value) -> str:
+        return html.escape(str(value), quote=False)
+
     return (
-        f"🔤 {card['spanish']}\n"
-        f"🇷🇺 {card['russian']}\n"
-        f"🗣 произношение: {card['transcription']}\n"
-        f"📝 пример: {card['example_es']} — {card['example_ru']}"
+        f"🔤 <b>{esc(card['spanish'])}</b>\n"
+        f"🇷🇺 {esc(card['russian'])}\n"
+        f"🗣 произношение: {esc(card['transcription'])}\n"
+        f"📝 пример: {esc(card['example_es'])} — {esc(card['example_ru'])}"
     )
 
 

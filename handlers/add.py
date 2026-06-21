@@ -55,7 +55,7 @@ async def receive_text(
         return
 
     await state.update_data(card=card)
-    await message.answer(formatting.card_preview(card))
+    await message.answer(formatting.card_preview(card), parse_mode="HTML")
     await _send_voice(message, card["spanish"])
     await message.answer("Сохранить?", reply_markup=keyboards.save_card_keyboard())
 

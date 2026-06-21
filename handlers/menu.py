@@ -91,6 +91,7 @@ async def show_card(
     await call.message.edit_text(
         formatting.card_preview(card),
         reply_markup=keyboards.card_detail_keyboard(card["id"], int(page)),
+        parse_mode="HTML",
     )
     sent = await voice.send_card_voice(call.message, conn, card)
     if sent is not None:
