@@ -50,8 +50,12 @@ async def receive_text(
         return
 
     if db.card_exists(conn, message.from_user.id, card["spanish"]):
-        await state.clear()
-        await message.answer(f"«{card['spanish']}» уже есть в твоём словаре 🙂")
+        # Stay in waiting_for_text so the next word can be sent straight away,
+        # without tapping «Добавить слово» again. Menu buttons still escape
+        # (handled at the top of this function).
+        await message.answer(
+            f"«{card['spanish']}» уже есть в твоём словаре 🙂 Пришли другое слово."
+        )
         return
 
     await state.update_data(card=card)
