@@ -146,6 +146,11 @@ async def check_translation(
         ok = False
         await message.answer("Ничего страшного ❤️ Запомним вместе:")
         await message.answer(formatting.card_preview(card))
+    elif grading.answers_match(message.text, card["spanish"]):
+        # Right word, only case/space differs (e.g. phone auto-capitalised the
+        # first letter) — accept outright, no need to bother Claude.
+        ok = True
+        await message.answer("✅ Верно!")
     else:
         try:
             # to_thread: the sync Anthropic call must not block the event loop

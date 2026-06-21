@@ -30,3 +30,20 @@ def test_grade_raises_on_bad_response():
     with pytest.raises(grading.GradingError):
         grading.grade(client, prompt_ru="еда",
                       expected_es="comida", answer="komida")
+
+
+@pytest.mark.parametrize(
+    "answer, expected, match",
+    [
+        ("Mesa", "mesa", True),     # the bug: phone auto-capitalised first letter
+        ("MESA", "mesa", True),     # all caps
+        ("  mesa ", "mesa", True),  # surrounding whitespace
+        ("mesa", "mesa", True),     # exact
+        ("Ñoño", "ñoño", True),     # case-folding on accented capitals
+        ("Buenos días", "buenos días", True),  # phrase, only case differs
+        ("mama", "mamá", False),    # accents preserved — a real spelling slip
+        ("silla", "mesa", False),   # genuinely different word
+    ],
+)
+def test_answers_match_ignores_case_keeps_accents(answer, expected, match):
+    assert grading.answers_match(answer, expected) is match

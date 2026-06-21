@@ -26,7 +26,7 @@ Victoria для теста); данные ключуются по `user_id`.
 
 Python 3.12 · **aiogram 3.13.1** (long-polling, MemoryStorage FSM) · **SQLite** (stdlib) ·
 **anthropic 0.39** (`claude-haiku-4-5-20251001`) · **edge-tts 7.2.8** (`es-ES-XimenaNeural`) ·
-python-dotenv · pytest + pytest-asyncio. **57 тестов.**
+python-dotenv · pytest + pytest-asyncio. **78 тестов.**
 
 ## Структура
 
@@ -124,6 +124,11 @@ python bot.py               # long-polling
 - **«Не знаю/не поняла»** (`intents.is_giveup`): тёплый ответ + разбор слова, засчитывается
   как «не вспомнила».
 - **Дедуп:** `db.card_exists` (без учёта регистра/акцентов) не даёт добавить то же слово.
+- **Проверка ответа (режим перевода):** перед вызовом Claude — регистронезависимая
+  сверка `grading.answers_match` (как в аудировании и `card_exists`). Заглавная первая
+  буква (автокапитализация на телефоне) НЕ считается ошибкой. **Акценты значимы**
+  (`mamá` ≠ `mama`) — пропуск акцента это настоящая опечатка, Claude мягко поправит;
+  `ñ` — отдельная буква, в `n` не сворачивается (`año` ≠ `ano`).
 - **Аудио кэшируется** по Telegram file_id; смена голоса требует сброса
   `audio_file_id` у карточек (иначе играет старый голос).
 - **Доступ:** только `ALLOWED_USER_IDS`, на чужих не реагирует. Пользователей уже
@@ -136,7 +141,7 @@ python bot.py               # long-polling
 ## Статус и бэклог
 
 **Готово:** MVP собран (subagent-driven, TDD + ревью), протестирован вживую в Telegram
-(@SimpleSpanishBot), слит в `main` + вторая волна доработок 2026-06-10. 70 тестов зелёных.
+(@SimpleSpanishBot), слит в `main` + вторая волна доработок 2026-06-10. 78 тестов зелёных.
 **Задеплоен на VPS (2026-06-15):** DigitalOcean Frankfurt, systemd (`Restart=always`),
 ночной бэкап через `scripts/backup-db.sh`, приватный GitHub-репо `vtrush88/spanish-bot`.
 Ран-бук: `docs/superpowers/deploy.md`.

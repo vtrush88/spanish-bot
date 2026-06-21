@@ -33,6 +33,16 @@ class GradingError(Exception):
     pass
 
 
+def answers_match(answer: str, expected: str) -> bool:
+    """True if answer equals expected ignoring case and surrounding space.
+
+    Case is folded (so a phone auto-capitalising the first letter — «Mesa» for
+    «mesa» — is not treated as a mistake), but accents are preserved
+    («mama» ≠ «mamá») so a missing accent still gets corrective feedback.
+    """
+    return answer.strip().lower() == expected.strip().lower()
+
+
 def _extract(response) -> dict | None:
     for block in response.content:
         if getattr(block, "type", None) == "tool_use" and block.name == "save_grade":
