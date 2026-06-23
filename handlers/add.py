@@ -16,27 +16,27 @@ import db
 import formatting
 import keyboards
 from services import enrichment, tts
-from states import AddCard
+from states import AddCard, leave_modes
 
 router = Router()
 
 
 @router.message(F.text == keyboards.BTN_ADD)
 async def start_add(message: Message, state: FSMContext) -> None:
+    await leave_modes(state)  # drop stale previews so their «✅ Да» goes inert
     await state.set_state(AddCard.waiting_for_text)
-    await message.answer("Напиши слово или фразу — на испанском или русском 🙂")
+    await message.answer(
+        "Пиши слова или фразы — по одному, на испанском или русском 🙂 "
+        "Я сохраню каждое. Когда закончишь, выбери что-нибудь в меню внизу."
+    )
 
 
-@router.message(AddCard.waiting_for_text, F.text)
+@router.message(AddCard.waiting_for_text, F.text, ~F.text.in_(keyboards.MENU_BUTTONS))
 async def receive_text(
     message: Message, state: FSMContext, conn: sqlite3.Connection,
     anthropic: Anthropic,
 ) -> None:
     text = message.text.strip()
-    if text in keyboards.MENU_BUTTONS:
-        await state.clear()
-        await message.answer("Окей, отменяю добавление 🙂 Нажми кнопку ещё раз.")
-        return
     try:
         # to_thread: the sync Anthropic call must not block the event loop
         card = await asyncio.to_thread(enrichment.enrich, anthropic, text)
@@ -112,6 +112,6 @@ async def save_no(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
 
 
-@router.message(AddCard.waiting_for_text)
+@router.message(AddCard.waiting_for_text, ~F.text.in_(keyboards.MENU_BUTTONS))
 async def reject_non_text(message: Message) -> None:
     await message.answer("Я понимаю пока только текст 🙂 Напиши слово или фразу.")
