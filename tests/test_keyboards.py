@@ -45,6 +45,12 @@ def test_vocab_keyboard_no_nav_single_page():
     assert len(kb.inline_keyboard) == 1
 
 
+def test_save_card_keyboard_carries_seq():
+    kb = keyboards.save_card_keyboard(7)
+    datas = {b.callback_data for row in kb.inline_keyboard for b in row}
+    assert datas == {"save:yes:7", "save:no:7"}
+
+
 def test_card_detail_keyboard_carries_id_and_page():
     kb = keyboards.card_detail_keyboard(5, 2)
     datas = {b.callback_data for row in kb.inline_keyboard for b in row}

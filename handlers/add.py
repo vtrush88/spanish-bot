@@ -58,10 +58,15 @@ async def receive_text(
         )
         return
 
-    await state.update_data(card=card)
+    data = await state.get_data()
+    seq = data.get("seq", 0) + 1            # monotonic; never reset (token uniqueness)
+    pending = data.get("pending", {})
+    pending[str(seq)] = card
+    await state.update_data(pending=pending, seq=seq)
     await message.answer(formatting.card_preview(card), parse_mode="HTML")
     await _send_voice(message, card["spanish"])
-    await message.answer("Сохранить?", reply_markup=keyboards.save_card_keyboard())
+    await message.answer("Сохранить?",
+                         reply_markup=keyboards.save_card_keyboard(seq))
 
 
 async def _send_voice(message: Message, spanish: str) -> None:
@@ -85,14 +90,35 @@ async def _send_voice(message: Message, spanish: str) -> None:
             os.remove(tmp)
 
 
-@router.callback_query(F.data == "save:yes")
+async def _finish_preview(call: CallbackQuery, text: str) -> None:
+    """Replace the «Сохранить?» prompt with the result, dropping the buttons.
+
+    edit_text omits reply_markup, so the inline keyboard disappears. Falls back
+    to a fresh message if the original is too old to edit (pattern from
+    menu.py:_remove_card_voice).
+    """
+    try:
+        await call.message.edit_text(text)
+    except TelegramBadRequest:
+        await call.message.answer(text)
+
+
+@router.callback_query(F.data.startswith("save:yes:"))
 async def save_yes(
     call: CallbackQuery, state: FSMContext, conn: sqlite3.Connection
 ) -> None:
     data = await state.get_data()
-    card = data.get("card")
+    pending = data.get("pending", {})
+    card = pending.pop(call.data.split(":")[2], None)
     if card is None:
         await call.answer("Эта карточка уже неактивна 🙂")
+        return
+    await state.update_data(pending=pending)  # consumed: read-once + per-preview scope
+    if db.card_exists(conn, call.from_user.id, card["spanish"]):
+        # Already saved (e.g. a second unsaved preview of the same word, or added
+        # since this preview was created) — don't duplicate.
+        await _finish_preview(call, f"«{card['spanish']}» уже есть в твоём словаре 🙂")
+        await call.answer()
         return
     db.add_card(
         conn, user_id=call.from_user.id, kind=card["kind"],
@@ -100,16 +126,27 @@ async def save_yes(
         transcription=card["transcription"], example_es=card["example_es"],
         example_ru=card["example_ru"], enriched=True, today=date.today(),
     )
-    await state.clear()
-    await call.message.answer("Сохранено! ✅")
+    await _finish_preview(call, "Сохранено! ✅ Пиши следующее 🙂")
     await call.answer()
 
 
-@router.callback_query(F.data == "save:no")
+@router.callback_query(F.data.startswith("save:no:"))
 async def save_no(call: CallbackQuery, state: FSMContext) -> None:
-    await state.clear()
-    await call.message.answer("Ок, не сохраняю.")
+    data = await state.get_data()
+    pending = data.get("pending", {})
+    card = pending.pop(call.data.split(":")[2], None)
+    if card is None:
+        await call.answer("Эта карточка уже неактивна 🙂")
+        return
+    await state.update_data(pending=pending)
+    await _finish_preview(call, "Ок, пропускаю 🙂 Пиши следующее.")
     await call.answer()
+
+
+@router.callback_query(F.data.in_({"save:yes", "save:no"}))
+async def save_legacy(call: CallbackQuery) -> None:
+    # Tokenless buttons from messages sent before this deploy — answer gracefully.
+    await call.answer("Эта карточка уже неактивна 🙂")
 
 
 @router.message(AddCard.waiting_for_text, ~F.text.in_(keyboards.MENU_BUTTONS))

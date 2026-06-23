@@ -42,10 +42,10 @@ def grade_keyboard() -> InlineKeyboardMarkup:
     ]])
 
 
-def save_card_keyboard() -> InlineKeyboardMarkup:
+def save_card_keyboard(seq: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Да", callback_data="save:yes"),
-        InlineKeyboardButton(text="❌ Нет", callback_data="save:no"),
+        InlineKeyboardButton(text="✅ Да", callback_data=f"save:yes:{seq}"),
+        InlineKeyboardButton(text="❌ Нет", callback_data=f"save:no:{seq}"),
     ]])
 
 
