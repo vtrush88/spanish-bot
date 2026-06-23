@@ -12,6 +12,7 @@ import db
 import formatting
 import keyboards
 import voice
+from states import leave_modes
 
 router = Router()
 
@@ -25,7 +26,8 @@ GREETING = (
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message) -> None:
+async def cmd_start(message: Message, state: FSMContext) -> None:
+    await leave_modes(state)  # /start is a clean reset
     await message.answer(GREETING, reply_markup=keyboards.main_menu())
 
 
@@ -46,7 +48,10 @@ def _render_page(conn: sqlite3.Connection, user_id: int, page: int):
 
 
 @router.message(F.text == keyboards.BTN_VOCAB)
-async def show_vocab(message: Message, conn: sqlite3.Connection) -> None:
+async def show_vocab(
+    message: Message, state: FSMContext, conn: sqlite3.Connection
+) -> None:
+    await leave_modes(state)  # «Мой словарь» leaves any active mode (add or training)
     text, kb = _render_page(conn, message.from_user.id, 0)
     await message.answer(text, reply_markup=kb)
 
