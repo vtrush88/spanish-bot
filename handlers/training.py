@@ -15,7 +15,7 @@ import keyboards
 import session
 import voice
 from services import grading, srs
-from states import Training
+from states import Training, leave_modes
 
 router = Router()
 EMPTY = ("На сегодня всё повторили! 🎉 Можешь добавить новые слова "
@@ -47,6 +47,7 @@ async def _show_next_flashcard(
 async def start_flashcards(
     message: Message, state: FSMContext, conn: sqlite3.Connection
 ) -> None:
+    await leave_modes(state)  # leave any prior mode + drop pending add-previews
     due = db.get_due_cards(conn, message.from_user.id, date.today())
     if not due:
         await message.answer(EMPTY)
@@ -119,6 +120,7 @@ async def _ask_next_translation(
 async def start_translate(
     message: Message, state: FSMContext, conn: sqlite3.Connection
 ) -> None:
+    await leave_modes(state)  # leave any prior mode + drop pending add-previews
     due = db.get_due_cards(conn, message.from_user.id, date.today())
     if not due:
         await message.answer(EMPTY)
@@ -213,6 +215,7 @@ async def _ask_next_listen(
 async def start_listen(
     message: Message, state: FSMContext, conn: sqlite3.Connection
 ) -> None:
+    await leave_modes(state)  # leave any prior mode + drop pending add-previews
     due = db.get_due_cards(conn, message.from_user.id, date.today())
     if not due:
         await message.answer(EMPTY)
