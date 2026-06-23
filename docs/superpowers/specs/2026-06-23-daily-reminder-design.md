@@ -50,9 +50,16 @@ IO, pure parts unit-tested, the timing loop verified manually.
 
 - **`next_fire(now: datetime, hour: int, minute: int) -> datetime`** — given an
   aware `now` (in `REMINDER_TZ`), return the next `hour:minute` instant: today if
-  still in the future, else tomorrow. All arithmetic via `zoneinfo`
-  (`ZoneInfo(REMINDER_TZ)`), so the Spain summer/winter (CET/CEST) switch is handled
-  automatically — no manual offset.
+  still in the future, else tomorrow, as an **aware** datetime built fresh for the
+  target calendar day at `hour:minute` (not `now + timedelta`). Construction via
+  `zoneinfo` (`ZoneInfo(REMINDER_TZ)`), so the Spain summer/winter (CET/CEST) switch
+  is handled automatically — no manual offset.
+- **The sleep delay MUST be computed in absolute time:** `delay =
+  next_fire.timestamp() - now.timestamp()` (equivalently, subtract after
+  `.astimezone(UTC)`). **Do NOT** `await asyncio.sleep((next_fire - now).total_seconds())`
+  on two same-zone aware datetimes: CPython subtracts same-`tzinfo` datetimes by
+  wall clock (it skips the UTC conversion), so on a DST-transition day that delta is
+  off by ±1h (verified: spring-forward gives 86400 s instead of the real 82800 s).
 - **`plural_words(n: int) -> str`** — Russian pluralization of «слово»: `1, 21, 31…
   → слово`; `2–4, 22–24… → слова`; `0, 5–20, 25–30… → слов`.
 - **`reminder_text(count: int) -> str`** — the message body (see Wording).
@@ -61,41 +68,55 @@ IO, pure parts unit-tested, the timing loop verified manually.
 
 - **`async send_daily_reminders(bot, conn, user_ids, exclude_ids, today) -> None`**
   — for each `uid in user_ids - exclude_ids`: `count = len(db.get_due_cards(conn,
-  uid, today))`; if `count > 0`, `await bot.send_message(uid, reminder_text(count))`.
-  Each send is wrapped in its own `try/except` (see Edge cases) so one failure does
-  not abort the batch.
+  uid, today))`; if `count > 0`, `await bot.send_message(uid, reminder_text(count),
+  parse_mode="HTML")`. Each send is wrapped in its own `try/except` (see Edge cases)
+  so one failure does not abort the batch.
 - **`async reminder_loop(bot, conn, cfg) -> None`** — `while True`: compute
-  `next_fire` in `REMINDER_TZ`, `await asyncio.sleep` until then, call
-  `send_daily_reminders` with `today = date.today()`, then loop (recompute → next
-  day). The whole per-fire body is wrapped in `try/except` + log so an unexpected
-  error reschedules instead of killing the loop.
+  `next_fire` in `REMINDER_TZ`, `await asyncio.sleep(delay)` (absolute-time delay,
+  above) until then, call `send_daily_reminders` with `today = date.today()`, then
+  loop (recompute → next day). The whole per-fire body is wrapped in `try/except` +
+  log so an unexpected error reschedules instead of killing the loop.
 
 ### Wiring (`bot.py`)
 
-After the `Bot` is created and before/around `dp.start_polling(bot)`:
+After the `Bot` is created, hold a reference to the task (a bare
+`create_task` may be garbage-collected — the asyncio docs require keeping a
+reference) and cancel it cleanly on shutdown:
 
 ```python
+reminder_task = None
 if cfg.reminder_at is not None:
-    asyncio.create_task(reminders.reminder_loop(bot, conn, cfg))
-await dp.start_polling(bot)
+    reminder_task = asyncio.create_task(reminders.reminder_loop(bot, conn, cfg))
+try:
+    await dp.start_polling(bot)
+finally:
+    if reminder_task is not None:
+        reminder_task.cancel()
+        await asyncio.gather(reminder_task, return_exceptions=True)
 ```
 
 The task runs on the same event loop and thread as the handlers, so it shares the
-single `conn` safely (its only DB use is the read-only `get_due_cards`).
+single `conn` safely (its only DB use is the read-only `get_due_cards`). The
+`finally` cancel + `gather` avoids a pending-task warning on shutdown and makes the
+lifecycle explicit.
 
 ## Configuration (`config.py` / `.env`)
 
-Add to the frozen `Config` dataclass and `load()`:
+Add to the frozen `Config` dataclass and `load()`. **`REMINDER_AT` gates the rest:
+the other two vars are parsed and validated only when `REMINDER_AT` is set.** A
+disabled feature must never crash the bot, so a typo in `REMINDER_TZ` or
+`REMINDER_EXCLUDE_IDS` is irrelevant while `REMINDER_AT` is absent.
 
 - **`REMINDER_AT`** = `HH:MM` (24h). **Absent/empty → feature off** (`reminder_at =
-  None`, loop never starts). **Present but malformed → raise `ValueError` at
-  startup** (loud failure in the journal, consistent with `_require`; better than
-  silently firing at the wrong time). Parsed to a `datetime.time`.
+  None`, loop never starts, the two vars below are not read). **Present but malformed
+  → raise `ValueError` at startup** (loud failure in the journal, consistent with
+  `_require`; better than silently firing at the wrong time). Parsed to a
+  `datetime.time`. **Daytime value expected** (see Date basis).
 - **`REMINDER_TZ`** = IANA name, default `Europe/Madrid` (mom is in Spain;
-  peninsular Spanish bot). Validated by constructing `ZoneInfo` at load (bad name →
-  `ZoneInfoNotFoundError` at startup).
+  peninsular Spanish bot). Parsed/validated **only when `REMINDER_AT` is set**, by
+  constructing `ZoneInfo` (bad name → `ZoneInfoNotFoundError` at startup).
 - **`REMINDER_EXCLUDE_IDS`** = comma-separated ids, default empty set (parsed like
-  `ALLOWED_USER_IDS`).
+  `ALLOWED_USER_IDS`), **only when `REMINDER_AT` is set**.
 
 ## Date basis (why server date, not local date)
 
@@ -104,21 +125,31 @@ The **timezone governs only *when* the reminder fires**; the **count uses
 guarantees the number in the reminder matches what the user sees on opening a
 training screen, and avoids touching the training handlers.
 
-Safe because mom is in Spain (`Europe/Madrid`, UTC+1/+2): fire time 10:00 local =
-08:00–09:00 UTC, the same calendar day; she also trains during her daytime, all the
-same UTC date. The server-date vs local-date count could only diverge in the small
-hours of Madrid night, when she is asleep and we are not firing. Making the count
-truly local would require timezone-aware "today" in the training handlers too —
-out of scope, no benefit for current users.
+Safe **for a daytime `REMINDER_AT`** (the intended use). Mom is in Spain
+(`Europe/Madrid`, UTC+1/+2): a daytime fire, e.g. 10:00 local = 08:00–09:00 UTC, is
+the same calendar day in both zones; she also trains during her daytime, all the
+same UTC date. So the count matches what she sees on opening training.
+
+**Known limitation:** this holds only while local and UTC dates agree at fire time.
+A very-early-morning `REMINDER_AT` (e.g. 00:30 Madrid = 22:30/23:30 UTC the previous
+day) would compute the count for the prior server day — off by one. We therefore
+**require a daytime `REMINDER_AT`** rather than make "today" timezone-aware in the
+training handlers (that would be the only fully-general fix, but it is out of scope
+and pointless for current users). The realistic config is a morning hour.
 
 ## Wording
 
 Gender-neutral (one male user among the users) and time-neutral (the time is
 configurable; avoid "Доброе утро"):
 
-> 🔔 Сегодня на повторение: **N слов**. Загляни в «🎴 Карточки», когда будет минутка 🙂
+> 🔔 Сегодня на повторение: &lt;b&gt;N слов&lt;/b&gt;. Загляни в «🎴 Карточки», когда будет минутка 🙂
 
-`N слов` uses `plural_words`. Exact copy is easy to adjust at spec review.
+The count uses `plural_words(N)`. **The bot has no default parse mode**, so the bold
+must be sent with `parse_mode="HTML"` and `<b>…</b>` (the pattern `card_preview`
+already uses) — otherwise raw `**`/`<b>` would show literally. `reminder_text`
+returns the HTML string; `send_daily_reminders` passes `parse_mode="HTML"`. Plain
+text (no bold) is the fallback if we'd rather not set a parse mode. Exact copy is
+easy to adjust at spec review.
 
 ## Edge cases
 
@@ -142,12 +173,16 @@ configurable; avoid "Доброе утро"):
 Per project convention (`AGENTS.md`): pure logic unit-tested, IO/timing verified
 manually.
 
-- **Pure, unit:** `next_fire` (now before target → today; after → tomorrow; the
-  Madrid CET↔CEST switch day); `plural_words` (1, 2, 4, 5, 11, 21); `reminder_text`.
+- **Pure, unit:** `next_fire` (now before target → today; after → tomorrow) **and
+  the absolute-time delay** — across the Madrid spring-forward day the
+  `timestamp()`-based delay is the real elapsed seconds (e.g. 23 h = 82800 s, not
+  86400 s), which is the regression guard for finding 1; `plural_words` (1, 2, 4, 5,
+  11, 21); `reminder_text` (returns the `<b>…</b>` HTML with the right plural form).
 - **`send_daily_reminders`:** async test with a fake `bot` (records
-  `send_message` calls) and an in-memory SQLite seeded so some users have due cards
-  and some don't — assert only `due>0` non-excluded users are messaged, and that a
-  send raising `TelegramForbiddenError` for one user does not stop the others.
+  `send_message` calls + the `parse_mode` arg) and an in-memory SQLite seeded so some
+  users have due cards and some don't — assert only `due>0` non-excluded users are
+  messaged, `parse_mode="HTML"` is passed, and that a send raising
+  `TelegramForbiddenError` for one user does not stop the others.
 - **`reminder_loop`:** not unit-tested (timers); covered by the manual pass.
 - **Manual on server:** set `REMINDER_AT` ~2 min ahead → message arrives with the
   correct count; a user with 0 due → no message; an id in `REMINDER_EXCLUDE_IDS` →
