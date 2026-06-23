@@ -15,7 +15,7 @@
 - **`REMINDER_AT` gates the feature and the other vars.** Absent → loop never starts, and `REMINDER_TZ` / `REMINDER_EXCLUDE_IDS` are not read or validated (a typo there must never crash a disabled feature). Present but malformed → `ValueError` at startup. Daytime value expected (see spec Date basis).
 - **HTML parse mode.** The bot has no default parse mode; the reminder's bold must be sent with `parse_mode="HTML"` and `<b>…</b>`, else the tags show literally.
 - **Gender-neutral copy only** (one male user among the users): no gendered or first-person past-tense bot phrasing.
-- **Regression gate:** `.venv/bin/pytest -q` stays green after every task; also `.venv/bin/python -c "import bot"` for import breakage. Baseline is **81 passed**; new tests bring it to **≈93** (per-task counts below).
+- **Regression gate:** `.venv/bin/pytest -q` stays green after every task; also `.venv/bin/python -c "import bot"` for import breakage. Baseline is **81 passed**; new tests bring it to **94** (5 config + 2 text + 3 scheduling + 3 send).
 - **Frequent commits:** one commit per task. Commit with `--no-gpg-sign` (non-interactive commits on this mac otherwise fail GPG signing).
 - **Do NOT restart the live bot until the final task.** Single poller per token; restart is deliberate.
 - **Router/startup order in `bot.py` unchanged** except the additions in Task 5.
@@ -380,13 +380,16 @@ from aiogram.exceptions import TelegramForbiddenError
 
 
 class _FakeBot:
-    def __init__(self, fail_for=()):
+    def __init__(self, fail_for=(), crash_for=()):
         self.sent = []
-        self._fail_for = set(fail_for)
+        self._fail_for = set(fail_for)      # raise an expected aiogram error
+        self._crash_for = set(crash_for)    # raise an unexpected generic error
 
     async def send_message(self, chat_id, text, parse_mode=None):
         if chat_id in self._fail_for:
             raise TelegramForbiddenError(method=None, message="blocked")
+        if chat_id in self._crash_for:
+            raise RuntimeError("network blip")
         self.sent.append((chat_id, text, parse_mode))
 
 
@@ -409,10 +412,20 @@ async def test_send_only_due_nonexcluded_users(conn):
     assert "<b>1 слово</b>" in bot.sent[0][1]
 
 
-async def test_send_one_failure_does_not_stop_others(conn):
+async def test_send_expected_failure_does_not_stop_others(conn):
     _seed_due(conn, 111, "uno")
     _seed_due(conn, 222, "dos")
-    bot = _FakeBot(fail_for={111})
+    bot = _FakeBot(fail_for={111})        # TelegramForbiddenError -> specific catch
+    await reminders.send_daily_reminders(
+        bot, conn, user_ids={111, 222}, exclude_ids=set(),
+        today=date(2026, 6, 1))
+    assert [s[0] for s in bot.sent] == [222]
+
+
+async def test_send_unexpected_error_does_not_stop_others(conn):
+    _seed_due(conn, 111, "uno")
+    _seed_due(conn, 222, "dos")
+    bot = _FakeBot(crash_for={111})       # RuntimeError -> broad catch
     await reminders.send_daily_reminders(
         bot, conn, user_ids={111, 222}, exclude_ids=set(),
         today=date(2026, 6, 1))
@@ -454,8 +467,10 @@ async def send_daily_reminders(
     today: date,
 ) -> None:
     """Message each non-excluded user their due-count; silent on 0 due.
-    A single send failure (user blocked the bot / never pressed /start)
-    is logged and skipped — the rest of the batch still goes out."""
+    ANY single send failure is logged and skipped so the rest of the batch
+    still goes out — blocked/never-started users (expected) get a clean warning;
+    anything else (network/server/retry-after/bug) gets a full traceback.
+    `CancelledError` is `BaseException`, so it still propagates (clean shutdown)."""
     for uid in user_ids - exclude_ids:
         count = len(db.get_due_cards(conn, uid, today))
         if count <= 0:
@@ -464,17 +479,19 @@ async def send_daily_reminders(
             await bot.send_message(uid, reminder_text(count), parse_mode="HTML")
         except (TelegramForbiddenError, TelegramBadRequest) as exc:
             logging.warning("reminder: skip user %s (%s)", uid, exc)
+        except Exception:  # noqa: BLE001 — one user must never abort the batch
+            logging.exception("reminder: unexpected send error for user %s", uid)
 ```
 
 - [ ] **Step 5: Run tests to confirm they pass**
 
 Run: `.venv/bin/pytest tests/test_reminders.py -q`
-Expected: PASS (now 7 tests in the file).
+Expected: PASS (now 8 tests in the file).
 
 - [ ] **Step 6: Full suite + import check**
 
 Run: `.venv/bin/pytest -q && .venv/bin/python -c "import bot"`
-Expected: green (≈91 passed), import clean.
+Expected: green (94 passed), import clean.
 
 - [ ] **Step 7: Commit**
 
@@ -560,7 +577,7 @@ Add `import reminders` to the imports. Replace the tail of `main()` (from `await
 - [ ] **Step 4: Suite + import check**
 
 Run: `.venv/bin/pytest -q && .venv/bin/python -c "import bot"`
-Expected: green (≈91 passed — no new tests this task), import clean.
+Expected: green (94 passed — no new tests this task), import clean.
 
 - [ ] **Step 5: Commit**
 
@@ -580,7 +597,7 @@ The human-in-the-loop gate (substitutes for handler/loop unit tests) plus the de
 - [ ] **Step 1: Confirm the suite is green**
 
 Run: `.venv/bin/pytest -q`
-Expected: ≈93 passed.
+Expected: 94 passed.
 
 - [ ] **Step 2: Push and deploy** (per `docs/superpowers/deploy.md` update routine)
 
@@ -605,6 +622,8 @@ journalctl -u spanish-bot -n 20 --no-pager   # 'Start polling', no TelegramConfl
 
 - [ ] **Step 4: Manual checklist in Telegram**
 
+**Prep for the positive case:** it needs a user with ≥1 due card at the fire minute. A newly added word is due the same day (`add_card` sets `due_at = today`), so if nobody is currently due, add one word from a test account shortly before the fire minute.
+
 - at the set minute, a user with ≥1 due card receives «🔔 Сегодня на повторение: N слов…», bold renders (no literal `<b>`), N matches what «🎴 Карточки» then shows;
 - a user with 0 due gets **no** message;
 - the excluded id gets **no** message;
@@ -614,17 +633,24 @@ journalctl -u spanish-bot -n 20 --no-pager   # 'Start polling', no TelegramConfl
 
 Edit `.env` on the server to the time Victoria wants (or comment `REMINDER_AT` out to disable), then `sudo systemctl restart spanish-bot` and re-check the journal.
 
-- [ ] **Step 6: Reconcile docs (the "no push" reversal)**
+**Avoid a double send the test day:** if the real time is still *ahead* today when you set it, the loop will also fire at it today — a second reminder the same day as the ~2-min test. Usually harmless. For exactly one/day starting tomorrow, set the real time only *after* it has already passed today, or leave `REMINDER_AT` commented until tomorrow.
 
-- `AGENTS.md`: update the «Pull-режим, без пуш-напоминаний» key decision to note the one opt-out-able daily due-count reminder; bump the test count; add `reminders.py` to the structure list.
-- `docs/superpowers/specs/2026-06-02-spanish-bot-design.md`: amend the "no push reminders" statement to reference this feature.
-- Vault tracker `Projects/Spanish Bot/{spanish-bot} {plan} project overview – 2026-06-03.md`: add a shipped line.
-- Commit (`--no-gpg-sign`) and `git push`.
+- [ ] **Step 6: Reconcile docs (the "no push" reversal) — TWO separate git repos**
+
+The app docs/code and the vault tracker live in **different** repos; commit each from its own root.
+
+- **App repo** (everything under `app/`):
+  - `AGENTS.md`: update the «Pull-режим, без пуш-напоминаний» key decision to note the one opt-out-able daily due-count reminder; bump the test count; add `reminders.py` to the structure list.
+  - `docs/superpowers/specs/2026-06-02-spanish-bot-design.md`: amend the "no push reminders" statement to reference this feature.
+  - From the `app/` root: `git add AGENTS.md docs/superpowers/specs/2026-06-02-spanish-bot-design.md && git commit --no-gpg-sign -m "docs: daily reminder shipped — reverse no-push decision" && git push`.
+- **Vault repo** (the tracker note is in the vault root, a SEPARATE repo — the app commit will NOT include it):
+  - `Projects/Spanish Bot/{spanish-bot} {plan} project overview – 2026-06-03.md`: add a shipped line.
+  - From `/Users/vtrush/work/main vault`: `git add "Projects/Spanish Bot/{spanish-bot} {plan} project overview – 2026-06-03.md" && git commit --no-gpg-sign -m "Spanish Bot tracker: daily reminder shipped"` (stage **only that file** — the vault has unrelated uncommitted changes).
 
 ---
 
 ## Notes for the implementer
 
 - **Why `date.today()` in the loop, not the local date?** Deliberate — the count must match what the training handlers show (they use `date.today()`), and a daytime Madrid fire is the same calendar day in UTC. See the spec's Date basis section and its known limitation (early-morning `REMINDER_AT` not supported).
-- **Why catch broad `Exception` in `reminder_loop` but specific errors in `send_daily_reminders`?** The per-user catch is narrow (expected blocked/not-started users). The loop-level catch is the survival backstop: a long-lived loop must never die on an unforeseen error, so it logs and reschedules the next day.
+- **Why two catch layers?** `send_daily_reminders` catches *per user*: a clean `warning` for the expected blocked/never-started cases (`TelegramForbiddenError`/`TelegramBadRequest`) and a broad `except Exception` (full traceback) for anything else — network/server/retry-after/bug — so one user never aborts the batch (this is the fix for review finding 1). `reminder_loop`'s outer `except Exception` is the last-resort backstop for an error *outside* the per-user loop (e.g. the `get_due_cards` read), so the long-lived loop reschedules instead of dying. `CancelledError` is `BaseException`, so it escapes both → clean shutdown/cancel.
 - **Why no reference-free `create_task`?** A bare `create_task` result can be garbage-collected mid-flight (asyncio docs); `reminder_task` holds the reference, and the `finally` cancels + `gather`s it for a clean shutdown.
