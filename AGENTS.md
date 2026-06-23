@@ -26,7 +26,7 @@ Victoria для теста); данные ключуются по `user_id`.
 
 Python 3.12 · **aiogram 3.13.1** (long-polling, MemoryStorage FSM) · **SQLite** (stdlib) ·
 **anthropic 0.39** (`claude-haiku-4-5-20251001`) · **edge-tts 7.2.8** (`es-ES-XimenaNeural`) ·
-python-dotenv · pytest + pytest-asyncio. **78 тестов.**
+python-dotenv · pytest + pytest-asyncio. **81 тест.**
 
 ## Структура
 
@@ -37,7 +37,8 @@ config.py         env: TELEGRAM_TOKEN, ANTHROPIC_API_KEY, ALLOWED_USER_IDS
 db.py             SQLite: cards (15 полей), CRUD, get_due_cards, card_exists (дедуп)
 handlers/menu.py     /start, главное меню, «Мой словарь» (5/стр, тап по номеру →
                      карточка с аудио и удалением; страница ездит в callback'ах)
-handlers/add.py      добавление: enrich → дедуп → превью+аудио → сохранить да/нет
+handlers/add.py      добавление (залипающий режим): enrich → дедуп → превью+аудио
+                     → сохранить да/нет; остаёшься в режиме, выход — кнопкой меню
 handlers/training.py 3 режима: карточки / проверка перевода / аудирование
 voice.py          общий send_card_voice: голосовое из кэша file_id или edge-tts
 services/enrichment.py  Claude tool-use → {kind,spanish,russian,transcription,example_*}
@@ -65,7 +66,7 @@ cp .env.example .env        # заполнить: TELEGRAM_TOKEN (@BotFather),
                             # ANTHROPIC_API_KEY (sk-ant-...), ALLOWED_USER_IDS (свой tg id)
 python bot.py               # long-polling
 ```
-Тесты: `.venv/bin/pytest -q` (ожидается 65 passed).
+Тесты: `.venv/bin/pytest -q` (ожидается 81 passed).
 Секреты (`.env`), БД (`spanish_bot.db`), `.venv` — в `.gitignore`, не коммитить.
 
 **Деплой на сервер:** пошаговый ран-бук — `docs/superpowers/deploy.md`
@@ -141,7 +142,7 @@ python bot.py               # long-polling
 ## Статус и бэклог
 
 **Готово:** MVP собран (subagent-driven, TDD + ревью), протестирован вживую в Telegram
-(@SimpleSpanishBot), слит в `main` + вторая волна доработок 2026-06-10. 78 тестов зелёных.
+(@SimpleSpanishBot), слит в `main` + вторая волна доработок 2026-06-10. 81 тест зелёный.
 **Задеплоен на VPS (2026-06-15):** DigitalOcean Frankfurt, systemd (`Restart=always`),
 ночной бэкап через `scripts/backup-db.sh`, приватный GitHub-репо `vtrush88/spanish-bot`.
 Ран-бук: `docs/superpowers/deploy.md`.

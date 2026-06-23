@@ -1,8 +1,9 @@
 # Sticky Add-Mode — Design
 
 **Date:** 2026-06-22
-**Status:** approved — implementation plan ready
-(`docs/superpowers/plans/2026-06-22-sticky-add-mode.md`), not yet implemented
+**Status:** shipped 2026-06-23 — implemented per
+`docs/superpowers/plans/2026-06-22-sticky-add-mode.md`, deployed to VPS and
+verified live (manual Telegram pass)
 **Components:** `states.py`, `handlers/add.py`, `handlers/menu.py`,
 `handlers/training.py`, `keyboards.py`
 
