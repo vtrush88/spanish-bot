@@ -1,14 +1,11 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from google.genai import errors
 
-from services import enrichment
-
-
-def _resp(input_dict):
-    block = SimpleNamespace(type="tool_use", name="save_card", input=input_dict)
-    return SimpleNamespace(content=[block])
+from services import enrichment, llm
 
 
 GOOD = {
@@ -21,26 +18,55 @@ GOOD = {
 }
 
 
+def _llm(client):
+    return llm.LLM(client=client, models=("flash",))
+
+
+def _resp(payload):
+    return SimpleNamespace(text=json.dumps(payload))
+
+
 def test_enrich_returns_clean_dict():
     client = MagicMock()
-    client.messages.create.return_value = _resp(GOOD)
-    result = enrichment.enrich(client, "comida")
+    client.models.generate_content.return_value = _resp(GOOD)
+    result = enrichment.enrich(_llm(client), "comida")
     assert result == GOOD
-    assert client.messages.create.call_count == 1
+    assert client.models.generate_content.call_count == 1
+
+
+def test_enrich_strips_extra_keys():
+    client = MagicMock()
+    client.models.generate_content.return_value = _resp({**GOOD, "extra": "x"})
+    assert enrichment.enrich(_llm(client), "comida") == GOOD
 
 
 def test_enrich_retries_once_then_succeeds():
     client = MagicMock()
-    bad = SimpleNamespace(content=[SimpleNamespace(type="text", text="oops")])
-    client.messages.create.side_effect = [bad, _resp(GOOD)]
-    result = enrichment.enrich(client, "comida")
+    client.models.generate_content.side_effect = [
+        SimpleNamespace(text="oops not json"), _resp(GOOD)]
+    result = enrichment.enrich(_llm(client), "comida")
     assert result["spanish"] == "comida"
-    assert client.messages.create.call_count == 2
+    assert client.models.generate_content.call_count == 2
+
+
+def test_enrich_retries_on_missing_key():
+    incomplete = {k: v for k, v in GOOD.items() if k != "transcription"}
+    client = MagicMock()
+    client.models.generate_content.side_effect = [_resp(incomplete), _resp(GOOD)]
+    assert enrichment.enrich(_llm(client), "comida") == GOOD
 
 
 def test_enrich_raises_after_two_bad_responses():
     client = MagicMock()
-    bad = SimpleNamespace(content=[SimpleNamespace(type="text", text="oops")])
-    client.messages.create.side_effect = [bad, bad]
+    client.models.generate_content.side_effect = [
+        SimpleNamespace(text="oops"), SimpleNamespace(text="oops")]
     with pytest.raises(enrichment.EnrichmentError):
-        enrichment.enrich(client, "comida")
+        enrichment.enrich(_llm(client), "comida")
+
+
+def test_enrich_propagates_quota_error():
+    client = MagicMock()
+    client.models.generate_content.side_effect = [
+        errors.ClientError(429, {"message": "quota"})]
+    with pytest.raises(llm.QuotaExceededError):
+        enrichment.enrich(_llm(client), "comida")
