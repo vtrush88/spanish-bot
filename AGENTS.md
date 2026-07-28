@@ -30,7 +30,7 @@ Victoria для теста); данные ключуются по `user_id`.
 
 Python 3.12 · **aiogram 3.13.1** (long-polling, MemoryStorage FSM) · **SQLite** (stdlib) ·
 **google-genai 2.8.0** (`gemini-2.5-flash`, фолбэк `gemini-2.5-flash-lite` — бесплатный тир) · **edge-tts 7.2.8** (`es-ES-XimenaNeural`) ·
-python-dotenv · pytest + pytest-asyncio. **81 тест.**
+python-dotenv · pytest + pytest-asyncio. **98 тестов.**
 
 ## Структура
 
@@ -150,7 +150,7 @@ python bot.py               # long-polling
 ## Статус и бэклог
 
 **Готово:** MVP собран (subagent-driven, TDD + ревью), протестирован вживую в Telegram
-(@SimpleSpanishBot), слит в `main` + вторая волна доработок 2026-06-10. 81 тест зелёный.
+(@SimpleSpanishBot), слит в `main` + вторая волна доработок 2026-06-10. 98 тестов зелёных.
 **Задеплоен на VPS (2026-06-15):** DigitalOcean Frankfurt, systemd (`Restart=always`),
 ночной бэкап через `scripts/backup-db.sh`, приватный GitHub-репо `vtrush88/spanish-bot`.
 Ран-бук: `docs/superpowers/deploy.md`.
