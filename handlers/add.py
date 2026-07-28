@@ -10,12 +10,12 @@ from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
-from anthropic import Anthropic
 
 import db
 import formatting
 import keyboards
 from services import enrichment, tts
+from services.llm import LLM, QuotaExceededError
 from states import AddCard, leave_modes
 
 router = Router()
@@ -34,12 +34,20 @@ async def start_add(message: Message, state: FSMContext) -> None:
 @router.message(AddCard.waiting_for_text, F.text, ~F.text.in_(keyboards.MENU_BUTTONS))
 async def receive_text(
     message: Message, state: FSMContext, conn: sqlite3.Connection,
-    anthropic: Anthropic,
+    llm: LLM,
 ) -> None:
     text = message.text.strip()
     try:
-        # to_thread: the sync Anthropic call must not block the event loop
-        card = await asyncio.to_thread(enrichment.enrich, anthropic, text)
+        # to_thread: синхронный вызов Gemini не должен блокировать event loop
+        card = await asyncio.to_thread(enrichment.enrich, llm, text)
+    except QuotaExceededError:
+        # 429 на обеих моделях: дневной лимит ИЛИ минутный всплеск —
+        # не обещаем «завтра», предлагаем и «позже».
+        await message.answer(
+            "Лимит бесплатных ИИ-запросов пока исчерпан 😕 "
+            "Попробуй позже или завтра."
+        )
+        return
     except enrichment.EnrichmentError:
         # Stay in waiting_for_text; next message retries. Save-as-is +
         # later re-enrichment is deferred (see out-of-MVP improvements).
