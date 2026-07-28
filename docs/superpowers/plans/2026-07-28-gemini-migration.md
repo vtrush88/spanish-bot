@@ -760,6 +760,10 @@ grep -rni "anthropic\|claude" --include="*.py" --exclude-dir=.venv . && echo "FO
 .venv/bin/pytest -q
 ```
 Expected: `clean`; импорт без ошибок; весь набор зелёный. Опционально: `.venv/bin/pip uninstall -y anthropic`.
+Уточнение гейта (добавлено на финальном ревью): информационные упоминания "anthropic"
+в prose/докстрингах сервисов (например, сравнение поведения SDK в комментариях
+`services/llm.py`) — это нормально; grep целится в импорты/идентификаторы/переменные
+окружения, а не в любое текстовое упоминание слова.
 
 - [ ] **Step 5: Commit (Victoria тапает YubiKey)**
 
@@ -782,7 +786,7 @@ git commit -m "Gemini migration: wire llm dependency, quota degradation in handl
 Точечные правки:
 
 1. Все упоминания Claude по файлу → Gemini (проверить `grep -n -i claude AGENTS.md`; на момент написания плана — строки ~14, 48–50, 113, 135, 147, 169, 176: описание проекта, структура services, грабли про to_thread, ключевые решения про промпты, бэклог про STT).
-2. Раздел «Стек»: `**anthropic 0.39** (claude-haiku-4-5-20251001)` → `**google-genai 2.14** (gemini-2.5-flash, фолбэк gemini-2.5-flash-lite — бесплатный тир)`; убрать упоминание пина httpx, если встречается в стеке.
+2. Раздел «Стек»: `**anthropic 0.39** (claude-haiku-4-5-20251001)` → `**google-genai 2.8.0** (gemini-2.5-flash, фолбэк gemini-2.5-flash-lite — бесплатный тир)` [исправлено на финальном ревью — 2.14 противоречила пину]; убрать упоминание пина httpx, если встречается в стеке.
 3. Раздел «Структура»: `config.py` — env-список → `TELEGRAM_TOKEN, GEMINI_API_KEY, GEMINI_MODEL, GEMINI_FALLBACK_MODEL, ALLOWED_USER_IDS`; строки про `services/enrichment.py` и `services/grading.py` — «Claude tool-use» → «Gemini structured JSON (через services/llm.py)»; добавить строку `services/llm.py   клиент Gemini + фолбэк моделей + QuotaExceededError`.
 4. «Рантайм-грабли»: удалить пункт про пин `httpx 0.27.2`; пункт про `asyncio.to_thread` — «Anthropic-клиент» → «Gemini-клиент»; добавить два пункта: «**Бесплатный тир Gemini: 250 зап./день (flash) + 1000 (flash-lite), лимиты раздельные.** При 429 код сам фолбэчит на вторую модель; когда исчерпаны обе — QuotaExceededError и мягкая деградация (слово не добавляется / проверка без ИИ-комментария); 5xx-перегрузка трактуется как мусорный ответ (ретрай сервиса, потом обычная ошибка). Модели меняются в .env без деплоя.» и «**google-genai запинен 2.8.0** — новее требует pydantic≥2.12, конфликт с aiogram 3.13 (<2.10); не поднимать без апгрейда aiogram. В `generate_json` захардкожен `thinking_budget=0` — валиден для моделей 2.5; экзотическая GEMINI_MODEL может не принять параметр (400), тогда править services/llm.py.»
 5. «Как запускать»: `ANTHROPIC_API_KEY (sk-ant-...)` → `GEMINI_API_KEY (Google AI Studio, бесплатно)`.
@@ -801,7 +805,10 @@ git commit -m "Gemini migration: update AGENTS.md (stack, env, quota gotchas)"
 
 1. Victoria: завести бесплатный ключ на https://aistudio.google.com/ (Google-аккаунт, карта не нужна).
 2. Локально: убедиться, что локальный бот не запущен; финальный `pytest -q` зелёный; `git push`.
-3. На VPS (ssh): `git pull`; `.venv/bin/pip install -r requirements.txt`; в `.env` добавить `GEMINI_API_KEY=...` (строку `ANTHROPIC_API_KEY` пока оставить — откат); `systemctl restart spanish-bot`.
+3. На VPS (ssh), в этом порядке (правка на финальном ревью — не апгрейдить httpx
+   под живым старым процессом): `systemctl stop spanish-bot` → `git pull` →
+   `.venv/bin/pip install -r requirements.txt` → в `.env` добавить `GEMINI_API_KEY=...`
+   (строку `ANTHROPIC_API_KEY` пока оставить — откат) → `systemctl start spanish-bot`.
 4. Журнал: `journalctl -u spanish-bot -f` — ждать `Start polling`, убедиться в отсутствии `TelegramConflictError`.
 5. Живая проверка в Telegram (Victoria): добавить контрольные слова (llave, cerveza, año, coche, vale) — проверить лексику Испании и транскрипцию (йАвэ, сервЭса, Аньо…); проверка перевода с намеренной опечаткой (typo-вердикт и нейтральная note); карточки и аудирование.
 6. Если качество ок — через несколько дней удалить `ANTHROPIC_API_KEY` из `.env` на VPS.

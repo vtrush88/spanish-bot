@@ -54,7 +54,7 @@ def grade(llm: llm_service.LLM, *, prompt_ru: str, expected_es: str,
     last_error = None
     for _ in range(2):
         data = llm_service.generate_json(llm, system=SYSTEM, schema=SCHEMA,
-                                         text=user)
+                                         text=user, max_output_tokens=256)
         if (data is not None
                 and all(k in data and data[k] for k in REQUIRED_KEYS)
                 and data["verdict"] in VALID_VERDICTS):

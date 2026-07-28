@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import sqlite3
 import tempfile
@@ -51,6 +52,15 @@ async def receive_text(
     except enrichment.EnrichmentError:
         # Stay in waiting_for_text; next message retries. Save-as-is +
         # later re-enrichment is deferred (see out-of-MVP improvements).
+        await message.answer(
+            "Не получилось обработать сейчас 😕 Попробуй ещё раз через минутку "
+            "или пришли другое слово."
+        )
+        return
+    except Exception:
+        # Не даём боту молчать на непредвиденной ошибке (F1c): та же тёплая
+        # деградация, что при EnrichmentError; слово не сохраняется.
+        logging.getLogger(__name__).exception("enrichment failed unexpectedly")
         await message.answer(
             "Не получилось обработать сейчас 😕 Попробуй ещё раз через минутку "
             "или пришли другое слово."

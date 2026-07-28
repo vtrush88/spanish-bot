@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import httpx
 import pytest
 from google.genai import errors
 
@@ -30,6 +31,17 @@ def test_returns_dict_from_first_model():
     assert result == GOOD
     assert client.models.generate_content.call_count == 1
     assert client.models.generate_content.call_args.kwargs["model"] == "flash"
+    config = client.models.generate_content.call_args.kwargs["config"]
+    assert config.max_output_tokens == 512  # default cap restored (F5)
+
+
+def test_transport_error_returns_none_like_5xx():
+    # Обрыв/таймаут httpx: как 5xx — мусорный ответ, сервисный ретрай даёт
+    # второй шанс, дальше обычная ошибка (F1b).
+    client = MagicMock()
+    client.models.generate_content.side_effect = [httpx.ConnectError("boom")]
+    assert llm.generate_json(_llm(client), system="s", schema=SCHEMA,
+                             text="hola") is None
 
 
 def test_garbage_text_returns_none():

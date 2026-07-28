@@ -6,6 +6,7 @@ import logging
 from aiogram import Bot, Dispatcher, F
 from aiogram.fsm.storage.memory import MemoryStorage
 from google import genai
+from google.genai import types as genai_types
 
 import config
 import db
@@ -18,7 +19,11 @@ async def main() -> None:
 
     conn = db.connect(cfg.db_path)
     db.init_db(conn)
-    gemini_client = genai.Client(api_key=cfg.gemini_api_key)
+    gemini_client = genai.Client(
+        api_key=cfg.gemini_api_key,
+        # ms; hung request must not park a to_thread worker forever
+        http_options=genai_types.HttpOptions(timeout=30_000),
+    )
     models = (cfg.gemini_model,)
     if cfg.gemini_fallback_model:
         models += (cfg.gemini_fallback_model,)

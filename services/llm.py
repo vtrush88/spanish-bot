@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
 from google.genai import errors, types
 
 
@@ -17,14 +18,16 @@ class LLM:
     models: tuple[str, ...]    # (основная, [фолбэк]) — из config
 
 
-def generate_json(llm: LLM, *, system: str, schema: dict, text: str) -> dict | None:
+def generate_json(llm: LLM, *, system: str, schema: dict, text: str,
+                   max_output_tokens: int = 512) -> dict | None:
     """Один вызов Gemini со структурированным JSON-ответом.
 
-    Возвращает dict (валидный JSON-объект) или None (мусор ЛИБО 5xx-перегрузка —
-    ретраит вызывающий, как раньше с tool_use; google-genai, в отличие от
-    anthropic SDK, сам НЕ ретраит). 429 → пробуем следующую модель из списка
-    (у каждой свой дневной лимит); 429 на всех → QuotaExceededError.
-    Прочие 4xx пробрасываются как есть.
+    Возвращает dict (валидный JSON-объект) или None (мусор ЛИБО 5xx-перегрузка
+    ЛИБО транспортный сбой httpx (обрыв/таймаут) — ретраит вызывающий, как
+    раньше с tool_use; google-genai, в отличие от anthropic SDK, сам НЕ
+    ретраит). 429 → пробуем следующую модель из списка (у каждой свой дневной
+    лимит); 429 на всех → QuotaExceededError. Прочие 4xx пробрасываются как
+    есть. `max_output_tokens` ограничивает длину ответа (сервисы задают явно).
     """
     last_quota_error: errors.APIError | None = None
     for model in llm.models:
@@ -36,6 +39,7 @@ def generate_json(llm: LLM, *, system: str, schema: dict, text: str) -> dict | N
                     system_instruction=system,
                     response_mime_type="application/json",
                     response_schema=schema,
+                    max_output_tokens=max_output_tokens,
                     # Ответы простые; thinking только замедлял бы и жёг лимит.
                     # NB: параметр валиден для моделей 2.5 (обе дефолтные);
                     # экзотика в GEMINI_MODEL может его не принять (400).
@@ -51,6 +55,10 @@ def generate_json(llm: LLM, *, system: str, schema: dict, text: str) -> dict | N
                 # сделает второй заход, потом отдаст свою обычную ошибку.
                 return None
             raise
+        except httpx.HTTPError:
+            # Транспортный сбой (обрыв, таймаут): как 5xx — мусорный ответ,
+            # сервисный ретрай даст второй шанс, дальше обычная ошибка.
+            return None
         try:
             data = json.loads(response.text)
         except (TypeError, ValueError):

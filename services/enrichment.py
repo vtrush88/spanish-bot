@@ -51,7 +51,7 @@ def enrich(llm: llm_service.LLM, text: str) -> dict:
     last_error = None
     for _ in range(2):
         data = llm_service.generate_json(llm, system=SYSTEM, schema=SCHEMA,
-                                         text=text)
+                                         text=text, max_output_tokens=512)
         if data is not None and all(k in data and data[k] for k in REQUIRED_KEYS):
             return {k: data[k] for k in REQUIRED_KEYS}
         last_error = "модель вернула ответ без валидной JSON-карточки"
