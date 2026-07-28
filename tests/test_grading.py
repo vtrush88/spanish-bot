@@ -1,23 +1,28 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from google.genai import errors
 
-from services import grading
+from services import grading, llm
 
 
-def _resp(input_dict):
-    block = SimpleNamespace(type="tool_use", name="save_grade", input=input_dict)
-    return SimpleNamespace(content=[block])
+def _llm(client):
+    return llm.LLM(client=client, models=("flash",))
+
+
+def _resp(payload):
+    return SimpleNamespace(text=json.dumps(payload))
 
 
 def test_grade_returns_verdict():
     client = MagicMock()
-    client.messages.create.return_value = _resp(
+    client.models.generate_content.return_value = _resp(
         {"verdict": "typo", "correct_spanish": "comida",
          "note": "маленькая опечатка"}
     )
-    result = grading.grade(client, prompt_ru="еда",
+    result = grading.grade(_llm(client), prompt_ru="еда",
                            expected_es="comida", answer="komida")
     assert result["verdict"] == "typo"
     assert result["correct_spanish"] == "comida"
@@ -25,10 +30,29 @@ def test_grade_returns_verdict():
 
 def test_grade_raises_on_bad_response():
     client = MagicMock()
-    bad = SimpleNamespace(content=[SimpleNamespace(type="text", text="x")])
-    client.messages.create.side_effect = [bad, bad]
+    client.models.generate_content.side_effect = [
+        SimpleNamespace(text="x"), SimpleNamespace(text="x")]
     with pytest.raises(grading.GradingError):
-        grading.grade(client, prompt_ru="еда",
+        grading.grade(_llm(client), prompt_ru="еда",
+                      expected_es="comida", answer="komida")
+
+
+def test_grade_rejects_unknown_verdict():
+    client = MagicMock()
+    client.models.generate_content.side_effect = [
+        _resp({"verdict": "maybe", "correct_spanish": "comida", "note": "?"}),
+        _resp({"verdict": "maybe", "correct_spanish": "comida", "note": "?"})]
+    with pytest.raises(grading.GradingError):
+        grading.grade(_llm(client), prompt_ru="еда",
+                      expected_es="comida", answer="komida")
+
+
+def test_grade_propagates_quota_error():
+    client = MagicMock()
+    client.models.generate_content.side_effect = [
+        errors.ClientError(429, {"message": "quota"})]
+    with pytest.raises(llm.QuotaExceededError):
+        grading.grade(_llm(client), prompt_ru="еда",
                       expected_es="comida", answer="komida")
 
 
