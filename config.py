@@ -9,7 +9,9 @@ from dotenv import load_dotenv
 @dataclass(frozen=True)
 class Config:
     telegram_token: str
-    anthropic_api_key: str
+    gemini_api_key: str
+    gemini_model: str
+    gemini_fallback_model: str
     allowed_user_ids: set[int]
     db_path: str
 
@@ -27,7 +29,11 @@ def load() -> Config:
     ids = {int(part.strip()) for part in raw_ids.split(",") if part.strip()}
     return Config(
         telegram_token=_require("TELEGRAM_TOKEN"),
-        anthropic_api_key=_require("ANTHROPIC_API_KEY"),
+        gemini_api_key=_require("GEMINI_API_KEY"),
+        # `or`: пустая строка в .env не должна дать models=("",)
+        gemini_model=os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash",
+        gemini_fallback_model=os.environ.get(
+            "GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite"),
         allowed_user_ids=ids,
         db_path=os.environ.get("DB_PATH", "spanish_bot.db"),
     )

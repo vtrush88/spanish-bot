@@ -11,7 +11,7 @@
 ту лексику, что проходят на уроках, — отсюда модель «свой словарь», а не готовый курс.
 Мама — **очень слабый пользователь техники**, поэтому **предельная простота — главное
 ограничение продукта** (объясняет 2 кнопки, залипающий режим, отсутствие настроек).
-Мама добавляет слова/фразы → Claude обогащает (перевод,
+Мама добавляет слова/фразы → Gemini обогащает (перевод,
 произношение русскими буквами, пример) → edge-tts озвучивает → бот тренирует тремя
 режимами (карточки с интервальным повторением, проверка перевода, аудирование).
 Pull-режим: мама заходит когда хочет и жмёт кнопку. Один пользователь (мама +
@@ -29,15 +29,15 @@ Victoria для теста); данные ключуются по `user_id`.
 ## Стек
 
 Python 3.12 · **aiogram 3.13.1** (long-polling, MemoryStorage FSM) · **SQLite** (stdlib) ·
-**anthropic 0.39** (`claude-haiku-4-5-20251001`) · **edge-tts 7.2.8** (`es-ES-XimenaNeural`) ·
-python-dotenv · pytest + pytest-asyncio. **81 тест.**
+**google-genai 2.8.0** (`gemini-2.5-flash`, фолбэк `gemini-2.5-flash-lite` — бесплатный тир) · **edge-tts 7.2.8** (`es-ES-XimenaNeural`) ·
+python-dotenv · pytest + pytest-asyncio. **101 тест.**
 
 ## Структура
 
 ```
 bot.py            точка входа: Dispatcher, MemoryStorage(FSM), access-filter
-                  (ALLOWED_USER_IDS), внедряет conn+anthropic, include_router, polling
-config.py         env: TELEGRAM_TOKEN, ANTHROPIC_API_KEY, ALLOWED_USER_IDS
+                  (ALLOWED_USER_IDS), внедряет conn+llm, include_router, polling
+config.py         env: TELEGRAM_TOKEN, GEMINI_API_KEY, GEMINI_MODEL, GEMINI_FALLBACK_MODEL, ALLOWED_USER_IDS, DB_PATH
 db.py             SQLite: cards (15 полей), CRUD, get_due_cards, card_exists (дедуп)
 handlers/menu.py     /start, главное меню, «Мой словарь» (5/стр, тап по номеру →
                      карточка с аудио и удалением; страница ездит в callback'ах)
@@ -45,8 +45,9 @@ handlers/add.py      добавление (залипающий режим): enr
                      → сохранить да/нет; остаёшься в режиме, выход — кнопкой меню
 handlers/training.py 3 режима: карточки / проверка перевода / аудирование
 voice.py          общий send_card_voice: голосовое из кэша file_id или edge-tts
-services/enrichment.py  Claude tool-use → {kind,spanish,russian,transcription,example_*}
-services/grading.py     Claude tool-use → {verdict,correct_spanish,note} (мягкая проверка)
+services/enrichment.py  Gemini structured JSON → {kind,spanish,russian,transcription,example_*}
+services/grading.py     Gemini structured JSON → {verdict,correct_spanish,note} (мягкая проверка)
+services/llm.py         клиент Gemini + фолбэк моделей + QuotaExceededError
 services/tts.py         edge-tts → MP3 (см. грабли ниже)
 services/srs.py         чистая: next_interval (Leitner-лесенка) + due_on
 session.py        чистая: advance() — политика очереди внутри сессии (повтор ошибки)
@@ -67,10 +68,10 @@ cd "<repo>"                 # эта папка (app/)
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env        # заполнить: TELEGRAM_TOKEN (@BotFather),
-                            # ANTHROPIC_API_KEY (sk-ant-...), ALLOWED_USER_IDS (свой tg id)
+                            # GEMINI_API_KEY (Google AI Studio, бесплатно), ALLOWED_USER_IDS (свой tg id)
 python bot.py               # long-polling
 ```
-Тесты: `.venv/bin/pytest -q` (ожидается 81 passed).
+Тесты: `.venv/bin/pytest -q` (ожидается 101 passed).
 Секреты (`.env`), БД (`spanish_bot.db`), `.venv` — в `.gitignore`, не коммитить.
 
 **Деплой на сервер:** пошаговый ран-бук — `docs/superpowers/deploy.md`
@@ -100,8 +101,8 @@ python bot.py               # long-polling
   Перед перезапуском убей старый. На macOS процесс — `Python bot.py` (с большой «P»,
   фреймворковый питон): `pkill -f "MacOS/Python bot.py"`. Шаблон `"python bot.py"`
   (с маленькой) его НЕ ловит, и осиротевший процесс (PPID 1) переживёт kill.
-- **httpx запинен `0.27.2`**: anthropic 0.39 передаёт `proxies=`, который httpx≥0.28
-  убрал → `TypeError` при создании `Anthropic()`. Не снимай пин без апгрейда anthropic.
+- **Бесплатный тир Gemini: 250 зап./день (flash) + 1000 (flash-lite), лимиты раздельные.** При 429 код сам фолбэчит на вторую модель; когда исчерпаны обе — QuotaExceededError и мягкая деградация (слово не добавляется / проверка без ИИ-комментария); 5xx-перегрузка трактуется как мусорный ответ (ретрай сервиса, потом обычная ошибка). Модели меняются в .env без деплоя.
+- **google-genai запинен 2.8.0** — новее требует pydantic≥2.12, конфликт с aiogram 3.13 (<2.10); не поднимать без апгрейда aiogram. В `generate_json` захардкожен `thinking_budget=0` — валиден для моделей 2.5; экзотическая GEMINI_MODEL может не принять параметр (400), тогда править services/llm.py.
 - **edge-tts должен быть ≥7.x** (`7.2.8`): версия 6.1.12 даёт `WSServerHandshakeError 403`
   (MS требует токен Sec-MS-GEC).
 - **Озвучка идёт через `answer_voice` (mp3)** — Bot API ≥7.2 принимает MP3 в sendVoice
@@ -110,12 +111,12 @@ python bot.py               # long-polling
   автоматически запускает остальные (реальный баг, пойман на телефоне 2026-06-10).
   file_id кэшируется (`sent.voice.file_id`); file_id привязан к типу сообщения — при
   смене voice↔audio кэш надо сбрасывать (`UPDATE cards SET audio_file_id = NULL`).
-- Synchronous Anthropic-клиент в async-хендлерах обёрнут в `asyncio.to_thread` —
+- Synchronous Gemini-клиент в async-хендлерах обёрнут в `asyncio.to_thread` —
   не разворачивай обратно в прямой вызов, иначе loop блокируется на ~1–5 с на запрос.
 
 ## Ключевые решения (не переоткрывать без причины)
 
-- **Контент курирует мама**, Claude обогащает (не готовый курс) — мама учит с
+- **Контент курирует мама**, Gemini обогащает (не готовый курс) — мама учит с
   преподавателем и закрепляет лексику с уроков, поэтому словарь сугубо личный.
 - **Простота — главное ограничение** (мама почти не дружит с техникой): любую фичу
   мерить по «не усложнит ли ей». Сложное (SRS) прячем за минимум кнопок.
@@ -132,10 +133,10 @@ python bot.py               # long-polling
 - **«Не знаю/не поняла»** (`intents.is_giveup`): тёплый ответ + разбор слова, засчитывается
   как «не вспомнила».
 - **Дедуп:** `db.card_exists` (без учёта регистра/акцентов) не даёт добавить то же слово.
-- **Проверка ответа (режим перевода):** перед вызовом Claude — регистронезависимая
+- **Проверка ответа (режим перевода):** перед вызовом Gemini — регистронезависимая
   сверка `grading.answers_match` (как в аудировании и `card_exists`). Заглавная первая
   буква (автокапитализация на телефоне) НЕ считается ошибкой. **Акценты значимы**
-  (`mamá` ≠ `mama`) — пропуск акцента это настоящая опечатка, Claude мягко поправит;
+  (`mamá` ≠ `mama`) — пропуск акцента это настоящая опечатка, Gemini мягко поправит;
   `ñ` — отдельная буква, в `n` не сворачивается (`año` ≠ `ano`).
 - **Аудио кэшируется** по Telegram file_id; смена голоса требует сброса
   `audio_file_id` у карточек (иначе играет старый голос).
@@ -144,15 +145,16 @@ python bot.py               # long-polling
 - **Тексты бота — гендер-нейтральные** (2026-06-10, среди пользователей есть мужчина):
   ни женских/мужских форм к пользователю («повторила», «умница»), ни прошедшего
   времени от первого лица у бота («отменила», «Сохранил» → «отменяю», «Сохранено»).
-  Промпт grading явно требует от Claude нейтральных note. Новые тексты — тоже нейтральные.
+  Промпт grading явно требует от Gemini нейтральных note. Новые тексты — тоже нейтральные.
 
 ## Статус и бэклог
 
 **Готово:** MVP собран (subagent-driven, TDD + ревью), протестирован вживую в Telegram
-(@SimpleSpanishBot), слит в `main` + вторая волна доработок 2026-06-10. 81 тест зелёный.
+(@SimpleSpanishBot), слит в `main` + вторая волна доработок 2026-06-10. 101 тест зелёный.
 **Задеплоен на VPS (2026-06-15):** DigitalOcean Frankfurt, systemd (`Restart=always`),
 ночной бэкап через `scripts/backup-db.sh`, приватный GitHub-репо `vtrush88/spanish-bot`.
 Ран-бук: `docs/superpowers/deploy.md`.
+**Мигрирован с Claude API на бесплатный тир Gemini (2026-07-28):** спека `docs/superpowers/specs/2026-07-28-gemini-migration-design.md`.
 
 **Не сделано / на будущее:**
 - **Rich Messages (Bot API 10.1, 2026-06-11)** — когда aiogram поддержит
@@ -166,14 +168,14 @@ python bot.py               # long-polling
   добавленные ДО пина на испанский Испании, остались со старой лексикой/транскрипцией
   (можно сделать разовый пере-проход); inline-кнопка «Показать ответ» в карточках
   нажимается повторно.
-  Закрыто 2026-06-10: `delete_card` теперь скоупится по `user_id`; вызовы Claude обёрнуты
+  Закрыто 2026-06-10: `delete_card` теперь скоупится по `user_id`; вызовы Gemini обёрнуты
   в `asyncio.to_thread` (loop не блокируется) — бот готов к 2–3 пользователям, добавление
   человека = его id в `ALLOWED_USER_IDS`.
 - **Проверка произношения (решено делать, вариант 1 — простой):** мама отправляет
   голосовое → бот скачивает OGG/Opus через Bot API → STT с указанием испанского
   (Whisper API ~$0.006/мин или локальный faster-whisper) → сравнить распознанное с
   ожидаемым словом («STT понял как llave → произношение разборчивое») → при промахе
-  тёплый разбор от Claude. Claude аудио не слушает — STT-прослойка обязательна.
+  тёплый разбор от Gemini. Gemini аудио не слушает — STT-прослойка обязательна.
   Апгрейд-путь (вариант 2, потом, если захочется строже): Azure Speech Pronunciation
   Assessment — пофонемные оценки, есть бесплатный лимит.
 - Вне MVP (в спеке): пуш-напоминания, статистика прогресса.

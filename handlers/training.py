@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import sqlite3
 from datetime import date
 
@@ -15,6 +16,7 @@ import keyboards
 import session
 import voice
 from services import grading, srs
+from services.llm import LLM, QuotaExceededError
 from states import Training, leave_modes
 
 router = Router()
@@ -132,7 +134,7 @@ async def start_translate(
 
 @router.message(Training.translate, F.text, ~F.text.in_(keyboards.MENU_BUTTONS))
 async def check_translation(
-    message: Message, state: FSMContext, conn: sqlite3.Connection, anthropic
+    message: Message, state: FSMContext, conn: sqlite3.Connection, llm: LLM
 ) -> None:
     data = await state.get_data()
     queue = data["queue"]
@@ -150,15 +152,15 @@ async def check_translation(
         await message.answer(formatting.card_preview(card), parse_mode="HTML")
     elif grading.answers_match(message.text, card["spanish"]):
         # Right word, only case/space differs (e.g. phone auto-capitalised the
-        # first letter) — accept outright, no need to bother Claude.
+        # first letter) — accept outright, no need to call the model.
         ok = True
         await message.answer("✅ Верно!")
     else:
         try:
-            # to_thread: the sync Anthropic call must not block the event loop
+            # to_thread: синхронный вызов Gemini не должен блокировать event loop
             verdict = await asyncio.to_thread(
                 grading.grade,
-                anthropic, prompt_ru=card["russian"],
+                llm, prompt_ru=card["russian"],
                 expected_es=card["spanish"], answer=message.text.strip(),
             )
             ok = verdict["verdict"] in ("correct", "typo")
@@ -174,8 +176,24 @@ async def check_translation(
                     f"❌ Не совсем. Правильно: {verdict['correct_spanish']} "
                     f"({verdict['note']})"
                 )
+        except QuotaExceededError:
+            # Лимит бесплатного тира: точное сравнение уже не совпало
+            # (answers_match выше), считаем как «не вспомнила» без ИИ-комментария.
+            ok = False
+            await message.answer(
+                f"❌ Правильно: {card['spanish']}\n"
+                "(умная проверка пока недоступна — лимит бесплатных запросов; "
+                "сравни свой ответ с правильным)"
+            )
         except grading.GradingError:
-            # Fall back to a forgiving exact-match check if Claude is unavailable.
+            # Fall back to a forgiving exact-match check if the model returns junk.
+            ok = message.text.strip().lower() == card["spanish"].lower()
+            await message.answer("✅ Верно!" if ok
+                                 else f"❌ Правильно: {card['spanish']}")
+        except Exception:
+            # Не даём боту молчать на непредвиденной ошибке (F1c): та же
+            # прощающая деградация, что при GradingError.
+            logging.getLogger(__name__).exception("grading failed unexpectedly")
             ok = message.text.strip().lower() == card["spanish"].lower()
             await message.answer("✅ Верно!" if ok
                                  else f"❌ Правильно: {card['spanish']}")

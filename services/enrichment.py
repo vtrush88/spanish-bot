@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-MODEL = "claude-haiku-4-5-20251001"
+from services import llm as llm_service
 
 REQUIRED_KEYS = (
     "kind", "spanish", "russian", "transcription", "example_es", "example_ru",
@@ -27,21 +27,19 @@ SYSTEM = (
     "Всё кратко и для начинающего."
 )
 
-TOOL = {
-    "name": "save_card",
-    "description": "Сохранить обогащённую карточку для изучения.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "kind": {"type": "string", "enum": ["word", "phrase"]},
-            "spanish": {"type": "string"},
-            "russian": {"type": "string"},
-            "transcription": {"type": "string"},
-            "example_es": {"type": "string"},
-            "example_ru": {"type": "string"},
-        },
-        "required": list(REQUIRED_KEYS),
+# OpenAPI-подмножество схем Gemini (типы ЗАГЛАВНЫМИ) — та же схема,
+# что была в TOOL["input_schema"], без anthropic-обёртки.
+SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "kind": {"type": "STRING", "enum": ["word", "phrase"]},
+        "spanish": {"type": "STRING"},
+        "russian": {"type": "STRING"},
+        "transcription": {"type": "STRING"},
+        "example_es": {"type": "STRING"},
+        "example_ru": {"type": "STRING"},
     },
+    "required": list(REQUIRED_KEYS),
 }
 
 
@@ -49,29 +47,12 @@ class EnrichmentError(Exception):
     pass
 
 
-def _extract(response) -> dict | None:
-    for block in response.content:
-        if getattr(block, "type", None) == "tool_use" and block.name == "save_card":
-            data = block.input
-            if all(k in data and data[k] for k in REQUIRED_KEYS):
-                return {k: data[k] for k in REQUIRED_KEYS}
-    return None
-
-
-def enrich(client, text: str) -> dict:
+def enrich(llm: llm_service.LLM, text: str) -> dict:
     last_error = None
     for _ in range(2):
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=512,
-            system=[{"type": "text", "text": SYSTEM,
-                     "cache_control": {"type": "ephemeral"}}],
-            tools=[TOOL],
-            tool_choice={"type": "tool", "name": "save_card"},
-            messages=[{"role": "user", "content": text}],
-        )
-        result = _extract(response)
-        if result is not None:
-            return result
-        last_error = "Claude вернул ответ без валидного tool_use save_card"
+        data = llm_service.generate_json(llm, system=SYSTEM, schema=SCHEMA,
+                                         text=text, max_output_tokens=512)
+        if data is not None and all(k in data and data[k] for k in REQUIRED_KEYS):
+            return {k: data[k] for k in REQUIRED_KEYS}
+        last_error = "модель вернула ответ без валидной JSON-карточки"
     raise EnrichmentError(last_error or "enrichment failed")

@@ -9,7 +9,7 @@
 2. `pip install -r requirements.txt`
 3. Скопировать `.env.example` → `.env`, заполнить:
    - `TELEGRAM_TOKEN` — от @BotFather
-   - `ANTHROPIC_API_KEY` — ключ Anthropic
+   - `GEMINI_API_KEY` — ключ Gemini (Google AI Studio, бесплатно)
    - `ALLOWED_USER_IDS` — Telegram user_id (через запятую)
 4. `python bot.py`
 
