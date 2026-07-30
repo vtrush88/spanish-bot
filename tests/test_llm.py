@@ -35,13 +35,21 @@ def test_returns_dict_from_first_model():
     assert config.max_output_tokens == 512  # default cap restored (F5)
 
 
-def test_transport_error_returns_none_like_5xx():
-    # Обрыв/таймаут httpx: как 5xx — мусорный ответ, сервисный ретрай даёт
-    # второй шанс, дальше обычная ошибка (F1b).
+def test_transport_error_falls_back_to_second_model():
+    # Обрыв/таймаут httpx на основной модели → пробуем фолбэк (как 5xx).
+    client = MagicMock()
+    client.models.generate_content.side_effect = [
+        httpx.ConnectError("boom"), SimpleNamespace(text=json.dumps(GOOD))]
+    result = llm.generate_json(_llm(client), system="s", schema=SCHEMA, text="hola")
+    assert result == GOOD
+    assert client.models.generate_content.call_args.kwargs["model"] == "flash-lite"
+
+
+def test_transport_error_on_all_models_returns_none():
     client = MagicMock()
     client.models.generate_content.side_effect = [httpx.ConnectError("boom")]
-    assert llm.generate_json(_llm(client), system="s", schema=SCHEMA,
-                             text="hola") is None
+    assert llm.generate_json(_llm(client, models=("flash",)), system="s",
+                             schema=SCHEMA, text="hola") is None
 
 
 def test_garbage_text_returns_none():
@@ -98,11 +106,34 @@ def test_non_429_client_error_propagates():
         llm.generate_json(_llm(client), system="s", schema=SCHEMA, text="hola")
 
 
-def test_5xx_returns_none_like_garbage():
-    # Перегрузка бесплатного тира (503 UNAVAILABLE — частый случай):
-    # трактуем как мусорный ответ, ретраит вызывающий сервис.
+def test_5xx_falls_back_to_second_model():
+    # 503 «high demand» на основной модели держится часами (наступлено
+    # 2026-07-30) — фолбэк обязан срабатывать и на 5xx, не только на 429.
     client = MagicMock()
     client.models.generate_content.side_effect = [
+        errors.ServerError(503, {"message": "overloaded"}),
+        SimpleNamespace(text=json.dumps(GOOD))]
+    result = llm.generate_json(_llm(client), system="s", schema=SCHEMA, text="hola")
+    assert result == GOOD
+    assert client.models.generate_content.call_count == 2
+    assert client.models.generate_content.call_args.kwargs["model"] == "flash-lite"
+
+
+def test_5xx_on_all_models_returns_none():
+    client = MagicMock()
+    client.models.generate_content.side_effect = [
+        errors.ServerError(503, {"message": "overloaded"}),
+        errors.ServerError(503, {"message": "overloaded"})]
+    assert llm.generate_json(_llm(client), system="s", schema=SCHEMA,
+                             text="hola") is None
+
+
+def test_mixed_429_then_5xx_returns_none_not_quota():
+    # Квота на одной + перегрузка на другой ≠ «лимит исчерпан»:
+    # это «попробуй позже», а не «до завтра».
+    client = MagicMock()
+    client.models.generate_content.side_effect = [
+        errors.ClientError(429, {"message": "quota"}),
         errors.ServerError(503, {"message": "overloaded"})]
     assert llm.generate_json(_llm(client), system="s", schema=SCHEMA,
                              text="hola") is None

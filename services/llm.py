@@ -22,14 +22,18 @@ def generate_json(llm: LLM, *, system: str, schema: dict, text: str,
                    max_output_tokens: int = 512) -> dict | None:
     """Один вызов Gemini со структурированным JSON-ответом.
 
-    Возвращает dict (валидный JSON-объект) или None (мусор ЛИБО 5xx-перегрузка
-    ЛИБО транспортный сбой httpx (обрыв/таймаут) — ретраит вызывающий, как
-    раньше с tool_use; google-genai, в отличие от anthropic SDK, сам НЕ
-    ретраит). 429 → пробуем следующую модель из списка (у каждой свой дневной
-    лимит); 429 на всех → QuotaExceededError. Прочие 4xx пробрасываются как
-    есть. `max_output_tokens` ограничивает длину ответа (сервисы задают явно).
+    Возвращает dict (валидный JSON-объект) или None (мусор — ретраит
+    вызывающий, как раньше с tool_use; google-genai, в отличие от anthropic
+    SDK, сам НЕ ретрает). Недоступность модели — 429, 5xx И транспортный сбой
+    httpx (обрыв/таймаут) — переключает на следующую модель списка (наступлено
+    2026-07-30: flash может отдавать 503 «high demand» часами, фолбэк обязан
+    срабатывать и на это). Все модели недоступны: был хоть один не-429 →
+    None (сервисный ретрай, потом «попробуй ещё раз»); чисто 429 →
+    QuotaExceededError. Прочие 4xx пробрасываются как есть.
+    `max_output_tokens` ограничивает длину ответа (сервисы задают явно).
     """
     last_quota_error: errors.APIError | None = None
+    saw_transient_error = False
     for model in llm.models:
         try:
             response = llm.client.models.generate_content(
@@ -50,17 +54,21 @@ def generate_json(llm: LLM, *, system: str, schema: dict, text: str,
                 last_quota_error = e
                 continue
             if e.code >= 500:
-                # Перегрузка бесплатного тира — как мусорный ответ: сервис
-                # сделает второй заход, потом отдаст свою обычную ошибку.
-                return None
+                # Перегрузка модели — пробуем следующую из списка.
+                saw_transient_error = True
+                continue
             raise
         except httpx.HTTPError:
-            # Транспортный сбой (обрыв, таймаут): как 5xx — мусорный ответ,
-            # сервисный ретрай даст второй шанс, дальше обычная ошибка.
-            return None
+            # Транспортный сбой (обрыв, таймаут) — пробуем следующую модель.
+            saw_transient_error = True
+            continue
         try:
             data = json.loads(response.text)
         except (TypeError, ValueError):
             return None
         return data if isinstance(data, dict) else None
+    if saw_transient_error:
+        # Хоть одна модель легла не по квоте: это «попробуй позже»,
+        # а не «лимит исчерпан» — отдаём None, сервис ретраит/деградирует.
+        return None
     raise QuotaExceededError("дневной лимит запросов исчерпан") from last_quota_error
