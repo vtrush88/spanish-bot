@@ -31,9 +31,9 @@ def load() -> Config:
         telegram_token=_require("TELEGRAM_TOKEN"),
         gemini_api_key=_require("GEMINI_API_KEY"),
         # `or`: пустая строка в .env не должна дать models=("",)
-        gemini_model=os.environ.get("GEMINI_MODEL") or "gemini-2.5-flash",
+        gemini_model=os.environ.get("GEMINI_MODEL") or "gemini-3.5-flash",
         gemini_fallback_model=os.environ.get(
-            "GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite"),
+            "GEMINI_FALLBACK_MODEL", "gemini-3.5-flash-lite"),
         allowed_user_ids=ids,
         db_path=os.environ.get("DB_PATH", "spanish_bot.db"),
     )

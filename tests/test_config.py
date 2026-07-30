@@ -52,8 +52,8 @@ def test_gemini_model_defaults(monkeypatch):
     monkeypatch.delenv("GEMINI_MODEL", raising=False)
     monkeypatch.delenv("GEMINI_FALLBACK_MODEL", raising=False)
     cfg = config.load()
-    assert cfg.gemini_model == "gemini-2.5-flash"
-    assert cfg.gemini_fallback_model == "gemini-2.5-flash-lite"
+    assert cfg.gemini_model == "gemini-3.5-flash"
+    assert cfg.gemini_fallback_model == "gemini-3.5-flash-lite"
 
 
 def test_gemini_model_overrides(monkeypatch):
@@ -76,4 +76,4 @@ def test_empty_gemini_model_falls_back_to_default(monkeypatch):
     monkeypatch.setenv("ALLOWED_USER_IDS", "1")
     monkeypatch.setenv("GEMINI_MODEL", "")
     cfg = config.load()
-    assert cfg.gemini_model == "gemini-2.5-flash"
+    assert cfg.gemini_model == "gemini-3.5-flash"

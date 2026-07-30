@@ -29,7 +29,7 @@ Victoria для теста); данные ключуются по `user_id`.
 ## Стек
 
 Python 3.12 · **aiogram 3.13.1** (long-polling, MemoryStorage FSM) · **SQLite** (stdlib) ·
-**google-genai 2.8.0** (`gemini-2.5-flash`, фолбэк `gemini-2.5-flash-lite` — бесплатный тир) · **edge-tts 7.2.8** (`es-ES-XimenaNeural`) ·
+**google-genai 2.8.0** (`gemini-3.5-flash`, фолбэк `gemini-3.5-flash-lite` — бесплатный тир) · **edge-tts 7.2.8** (`es-ES-XimenaNeural`) ·
 python-dotenv · pytest + pytest-asyncio. **101 тест.**
 
 ## Структура
@@ -102,7 +102,7 @@ python bot.py               # long-polling
   фреймворковый питон): `pkill -f "MacOS/Python bot.py"`. Шаблон `"python bot.py"`
   (с маленькой) его НЕ ловит, и осиротевший процесс (PPID 1) переживёт kill.
 - **Бесплатный тир Gemini: 250 зап./день (flash) + 1000 (flash-lite), лимиты раздельные.** При 429 код сам фолбэчит на вторую модель; когда исчерпаны обе — QuotaExceededError и мягкая деградация (слово не добавляется / проверка без ИИ-комментария); 5xx-перегрузка трактуется как мусорный ответ (ретрай сервиса, потом обычная ошибка). Модели меняются в .env без деплоя.
-- **google-genai запинен 2.8.0** — новее требует pydantic≥2.12, конфликт с aiogram 3.13 (<2.10); не поднимать без апгрейда aiogram. В `generate_json` захардкожен `thinking_budget=0` — валиден для моделей 2.5; экзотическая GEMINI_MODEL может не принять параметр (400), тогда править services/llm.py.
+- **google-genai запинен 2.8.0** — новее требует pydantic≥2.12, конфликт с aiogram 3.13 (<2.10); не поднимать без апгрейда aiogram. `thinking_config` в `generate_json` НЕ задаём: `thinkingBudget=0` возвращает 400 на моделях 3.5+ (наступлено 2026-07-30). И грабля свежих ключей: `gemini-2.5-*` в ListModels числятся, но новым пользователям недоступны (404 «no longer available to new users») — при смене модели проверяй живым вызовом, не списком.
 - **edge-tts должен быть ≥7.x** (`7.2.8`): версия 6.1.12 даёт `WSServerHandshakeError 403`
   (MS требует токен Sec-MS-GEC).
 - **Озвучка идёт через `answer_voice` (mp3)** — Bot API ≥7.2 принимает MP3 в sendVoice

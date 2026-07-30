@@ -40,10 +40,9 @@ def generate_json(llm: LLM, *, system: str, schema: dict, text: str,
                     response_mime_type="application/json",
                     response_schema=schema,
                     max_output_tokens=max_output_tokens,
-                    # Ответы простые; thinking только замедлял бы и жёг лимит.
-                    # NB: параметр валиден для моделей 2.5 (обе дефолтные);
-                    # экзотика в GEMINI_MODEL может его не принять (400).
-                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                    # thinking НЕ отключаем: thinkingBudget=0 → 400 на моделях 3.5+
+                    # (проверено 2026-07-30); дефолт моделей сам почти не думает
+                    # на структурном выводе, кап max_output_tokens страхует.
                 ),
             )
         except errors.APIError as e:
