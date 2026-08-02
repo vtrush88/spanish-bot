@@ -167,3 +167,11 @@ cd ~/spanish-bot && git pull
 sudo systemctl restart spanish-bot
 journalctl -u spanish-bot -n 20
 ```
+
+**Новый секрет в `.env` на сервере (не показывая значение в чате/логах):** Victoria кладёт
+строку в локальный `.env` (он git-ignored), дальше перенос одной командой с мака —
+```bash
+{ printf '\n'; grep '^GEMINI_API_KEY=' .env; } | ssh spanishbot@<DROPLET_IP> 'cat >> ~/spanish-bot/.env'
+```
+и проверка без раскрытия: `ssh … 'grep -c "^GEMINI_API_KEY=" ~/spanish-bot/.env'` (ожидается `1`).
+Так делали при миграции на Gemini 2026-07-30.
