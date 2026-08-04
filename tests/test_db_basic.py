@@ -8,18 +8,18 @@ def test_add_and_get_card(conn):
         conn,
         user_id=111,
         kind="word",
-        spanish="comida",
-        russian="еда",
+        word="comida",
+        translation="еда",
         transcription="комИда",
-        example_es="La comida está lista.",
-        example_ru="Еда готова.",
+        example="La comida está lista.",
+        example_translation="Еда готова.",
         enriched=True,
         today=date(2026, 6, 3),
     )
     assert isinstance(card_id, int)
     row = db.get_card(conn, card_id)
-    assert row["spanish"] == "comida"
-    assert row["russian"] == "еда"
+    assert row["word"] == "comida"
+    assert row["translation"] == "еда"
     assert row["enriched"] == 1
     assert row["interval_days"] == 0
     assert row["reps"] == 0

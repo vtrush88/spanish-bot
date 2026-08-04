@@ -12,9 +12,9 @@ def _seed_db(path, n):
     conn = db.connect(str(path))
     db.init_db(conn)
     for i in range(n):
-        db.add_card(conn, user_id=1, kind="word", spanish=f"w{i}",
-                    russian="x", transcription="x", example_es="x",
-                    example_ru="x", enriched=True, today=date(2026, 6, 15))
+        db.add_card(conn, user_id=1, kind="word", word=f"w{i}",
+                    translation="x", transcription="x", example="x",
+                    example_translation="x", enriched=True, today=date(2026, 6, 15))
     conn.close()
 
 
