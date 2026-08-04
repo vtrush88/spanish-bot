@@ -11,6 +11,7 @@
    - `TELEGRAM_TOKEN` — от @BotFather
    - `GEMINI_API_KEY` — ключ Gemini (Google AI Studio, бесплатно)
    - `ALLOWED_USER_IDS` — Telegram user_id (через запятую)
+   - `BOT_LANG` — язык бота: `es` (испанский, дефолт) или `en` (английский)
 4. `python bot.py`
 
 ## Тесты

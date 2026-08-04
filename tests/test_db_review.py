@@ -3,10 +3,10 @@ from datetime import date
 import db
 
 
-def _add(conn, spanish, russian, today, enriched=True):
+def _add(conn, word, translation, today, enriched=True):
     return db.add_card(
-        conn, user_id=111, kind="word", spanish=spanish, russian=russian,
-        transcription="x", example_es="e", example_ru="э",
+        conn, user_id=111, kind="word", word=word, translation=translation,
+        transcription="x", example="e", example_translation="э",
         enriched=enriched, today=today,
     )
 
@@ -52,9 +52,9 @@ def test_get_due_cards_filters_by_date(conn):
     db.update_review(conn, future, interval_days=30,
                      due_at=date(2026, 7, 3), remembered=True)
     due = db.get_due_cards(conn, user_id=111, today=date(2026, 6, 3))
-    spanish = {r["spanish"] for r in due}
-    assert "due_today" in spanish
-    assert "future" not in spanish
+    words = {r["word"] for r in due}
+    assert "due_today" in words
+    assert "future" not in words
 
 
 def test_list_and_delete(conn):
@@ -78,10 +78,10 @@ def test_delete_card_scoped_to_owner(conn):
 def test_set_audio_and_enrich(conn):
     cid = _add(conn, "hola", None, date(2026, 6, 3), enriched=False)
     db.set_audio_file_id(conn, cid, "FILEID123")
-    db.update_enrichment(conn, cid, russian="привет",
-                         transcription="Ола", example_es="¡Hola!",
-                         example_ru="Привет!")
+    db.update_enrichment(conn, cid, translation="привет",
+                         transcription="Ола", example="¡Hola!",
+                         example_translation="Привет!")
     row = db.get_card(conn, cid)
     assert row["audio_file_id"] == "FILEID123"
-    assert row["russian"] == "привет"
+    assert row["translation"] == "привет"
     assert row["enriched"] == 1

@@ -12,9 +12,9 @@ def _seed_db(path, n):
     conn = db.connect(str(path))
     db.init_db(conn)
     for i in range(n):
-        db.add_card(conn, user_id=1, kind="word", spanish=f"w{i}",
-                    russian="x", transcription="x", example_es="x",
-                    example_ru="x", enriched=True, today=date(2026, 6, 15))
+        db.add_card(conn, user_id=1, kind="word", word=f"w{i}",
+                    translation="x", transcription="x", example="x",
+                    example_translation="x", enriched=True, today=date(2026, 6, 15))
     conn.close()
 
 
@@ -60,3 +60,30 @@ def test_backup_same_day_rerun_is_idempotent(tmp_path):
     subprocess.run(["bash", str(SCRIPT), str(src), str(backups)], check=True)
     made = list(backups.glob("spanish_bot-*.db"))
     assert len(made) == 1  # one snapshot per day, overwritten cleanly
+
+
+def test_backup_prefix_follows_db_filename(tmp_path):
+    src = tmp_path / "english_bot.db"
+    _seed_db(src, 2)
+    backups = tmp_path / "backups"
+    subprocess.run(["bash", str(SCRIPT), str(src), str(backups)], check=True)
+    made = list(backups.glob("english_bot-*.db"))
+    assert len(made) == 1
+
+
+def test_two_bots_share_backup_dir_without_clobbering(tmp_path):
+    es_src = tmp_path / "spanish_bot.db"
+    en_src = tmp_path / "english_bot.db"
+    _seed_db(es_src, 1)
+    _seed_db(en_src, 2)
+    backups = tmp_path / "backups"
+    subprocess.run(["bash", str(SCRIPT), str(es_src), str(backups)], check=True)
+    subprocess.run(["bash", str(SCRIPT), str(en_src), str(backups)], check=True)
+    assert len(list(backups.glob("spanish_bot-*.db"))) == 1
+    assert len(list(backups.glob("english_bot-*.db"))) == 1
+    # ротация одного бота не съедает бэкапы другого
+    for d in range(1, 9):
+        (backups / f"english_bot-2026-05-0{d}.db").write_text("old")
+    subprocess.run(["bash", str(SCRIPT), str(en_src), str(backups)], check=True)
+    assert len(list(backups.glob("spanish_bot-*.db"))) == 1  # уцелел
+    assert len(list(backups.glob("english_bot-*.db"))) == 7

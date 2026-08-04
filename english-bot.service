@@ -1,0 +1,16 @@
+[Unit]
+Description=English Bot (Telegram, long-polling)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=spanishbot
+WorkingDirectory=/home/spanishbot/english-bot
+# .env читается самим кодом (config.load() -> load_dotenv()) из WorkingDirectory.
+ExecStart=/home/spanishbot/english-bot/.venv/bin/python bot.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

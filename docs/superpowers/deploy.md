@@ -167,3 +167,83 @@ cd ~/spanish-bot && git pull
 sudo systemctl restart spanish-bot
 journalctl -u spanish-bot -n 20
 ```
+
+⚠️ **Разовое — миграция колонок (2026-08):** перед `git pull`+restart сделать бэкап
+(миграция колонок необратима в одну сторону):
+```bash
+~/spanish-bot/scripts/backup-db.sh ~/spanish-bot/spanish_bot.db ~/backups
+```
+
+Pre-flight (до рестарта) — RENAME COLUMN нужен sqlite ≥3.25:
+```bash
+~/spanish-bot/.venv/bin/python -c "import sqlite3; print(sqlite3.sqlite_version)"
+```
+Версия < 3.25 → НЕ рестартовать, разбираться с апгрейдом sqlite отдельно.
+
+После рестарта — проверить, что миграция и старт прошли:
+```bash
+sqlite3 ~/spanish-bot/spanish_bot.db "PRAGMA table_info(cards);"
+# должны быть: word / translation / example / example_translation
+journalctl -u spanish-bot -n 20   # "Start polling"
+```
+
+Откат после миграции — это НЕ `git revert`: старый код на уже смигрированной БД
+стартует чисто, но падает на любой операции с карточкой
+(`no such column: spanish`). Правильный откат = restore бэкапа:
+`systemctl stop spanish-bot` → скопировать бэкап поверх `spanish_bot.db` →
+`git checkout` на старый коммит → `systemctl start spanish-bot`.
+
+**Новый секрет в `.env` на сервере (не показывая значение в чате/логах):** Victoria кладёт
+строку в локальный `.env` (он git-ignored), дальше перенос одной командой с мака —
+```bash
+{ printf '\n'; grep '^GEMINI_API_KEY=' .env; } | ssh spanishbot@<DROPLET_IP> 'cat >> ~/spanish-bot/.env'
+```
+и проверка без раскрытия: `ssh … 'grep -c "^GEMINI_API_KEY=" ~/spanish-bot/.env'` (ожидается `1`).
+Так делали при миграции на Gemini 2026-07-30.
+
+## Второй бот на том же сервере (английский, 2026-08)
+
+Тот же код, другой язык: отдельный клон, `.env` с `BOT_LANG=en`, свой юнит.
+Секреты: новый токен от BotFather + ключ Gemini из ОТДЕЛЬНОГО Google-проекта
+(лимиты бесплатного тира — по проекту; мамин бот и английский не делятся).
+
+```bash
+# на сервере (под spanishbot)
+cd ~ && git clone git@github.com:<USER>/spanish-bot.git english-bot
+cd english-bot
+python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
+
+# .env: секреты нового бота (TELEGRAM_TOKEN от BotFather, GEMINI_API_KEY из
+# ОТДЕЛЬНОГО Google-проекта) Victoria кладёт в локальный .env.english (git-ignored,
+# НЕ в общий .env — иначе python-dotenv last-wins и это перезапишет токен мамы).
+```
+
+С мака — перенос секретов одной командой, без значения в чате/логах:
+```bash
+{ printf '\n'; grep '^TELEGRAM_TOKEN=' .env.english; grep '^GEMINI_API_KEY=' .env.english; } | ssh spanishbot@<DROPLET_IP> 'cat >> ~/english-bot/.env'
+```
+
+На сервере (под spanishbot) — дописать не-секретные строки + ALLOWED_USER_IDS —
+это пользователи АНГЛИЙСКОГО бота (Victoria и друзья), НЕ мамин id:
+```bash
+printf 'BOT_LANG=en\nDB_PATH=/home/spanishbot/english-bot/english_bot.db\nALLOWED_USER_IDS=<id Victoria и друзей>\n' >> ~/english-bot/.env
+grep -c '^BOT_LANG=' ~/english-bot/.env; grep -c '^DB_PATH=' ~/english-bot/.env   # оба должны быть 1
+chmod 600 ~/english-bot/.env
+
+# юнит (под root)
+cp /home/spanishbot/english-bot/english-bot.service /etc/systemd/system/
+systemd-analyze verify /etc/systemd/system/english-bot.service
+systemctl daemon-reload && systemctl enable --now english-bot
+journalctl -u english-bot -n 20     # Start polling, без TelegramConflictError
+
+# sudoers (под root): расширить /etc/sudoers.d/spanishbot-service
+#   ... /usr/bin/systemctl restart spanish-bot, /usr/bin/systemctl status spanish-bot,
+#   /usr/bin/systemctl restart english-bot, /usr/bin/systemctl status english-bot
+# и проверить: visudo -c
+
+# бэкап (под spanishbot): вторая строка crontab
+35 3 * * * /home/spanishbot/english-bot/scripts/backup-db.sh /home/spanishbot/english-bot/english_bot.db /home/spanishbot/backups >> /home/spanishbot/backup.log 2>&1
+```
+
+Мамин бот при этом обновляется обычной «Рутиной обновлений» — там же (выше)
+разовые pre-flight/бэкап/откат для миграции колонок (2026-08).

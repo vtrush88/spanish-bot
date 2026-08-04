@@ -3,8 +3,8 @@ import formatting
 
 def test_card_preview_includes_all_fields():
     text = formatting.card_preview({
-        "spanish": "comida", "russian": "еда", "transcription": "комИда",
-        "example_es": "La comida está lista.", "example_ru": "Еда готова.",
+        "word": "comida", "translation": "еда", "transcription": "комИда",
+        "example": "La comida está lista.", "example_translation": "Еда готова.",
     })
     assert "comida" in text
     assert "еда" in text
@@ -14,8 +14,8 @@ def test_card_preview_includes_all_fields():
 
 def test_card_preview_bolds_spanish_word():
     text = formatting.card_preview({
-        "spanish": "comida", "russian": "еда", "transcription": "комИда",
-        "example_es": "La comida está lista.", "example_ru": "Еда готова.",
+        "word": "comida", "translation": "еда", "transcription": "комИда",
+        "example": "La comida está lista.", "example_translation": "Еда готова.",
     })
     assert "<b>comida</b>" in text
 
@@ -23,21 +23,21 @@ def test_card_preview_bolds_spanish_word():
 def test_card_preview_escapes_html_special_chars():
     # Raw <, >, & in the data must be escaped, or Telegram's HTML parser breaks.
     text = formatting.card_preview({
-        "spanish": "tú & yo", "russian": "ты <и> я", "transcription": "ту и йо",
-        "example_es": "a < b & c", "example_ru": "пример",
+        "word": "tú & yo", "translation": "ты <и> я", "transcription": "ту и йо",
+        "example": "a < b & c", "example_translation": "пример",
     })
-    assert "<b>tú &amp; yo</b>" in text   # spanish escaped, then bolded
+    assert "<b>tú &amp; yo</b>" in text   # word escaped, then bolded
     assert "ты &lt;и&gt; я" in text
     assert "a &lt; b &amp; c" in text
 
 
 def test_answer_reveal():
-    text = formatting.answer_reveal({"russian": "еда", "transcription": "комИда"})
+    text = formatting.answer_reveal({"translation": "еда", "transcription": "комИда"})
     assert "еда" in text and "комИда" in text
 
 
 def test_word_list_line_numbered():
-    line = formatting.word_list_line(3, {"spanish": "agua", "russian": "вода"})
+    line = formatting.word_list_line(3, {"word": "agua", "translation": "вода"})
     assert line.startswith("3.")
     assert "agua" in line and "вода" in line
 

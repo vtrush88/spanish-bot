@@ -8,11 +8,11 @@ CREATE TABLE IF NOT EXISTS cards (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id        INTEGER NOT NULL,
     kind           TEXT NOT NULL,
-    spanish        TEXT NOT NULL,
-    russian        TEXT,
+    word           TEXT NOT NULL,
+    translation    TEXT,
     transcription  TEXT,
-    example_es     TEXT,
-    example_ru     TEXT,
+    example        TEXT,
+    example_translation TEXT,
     audio_file_id  TEXT,
     enriched       INTEGER NOT NULL DEFAULT 0,
     created_at     TEXT NOT NULL,
@@ -23,6 +23,28 @@ CREATE TABLE IF NOT EXISTS cards (
 );
 """
 
+_COLUMN_RENAMES = (
+    ("spanish", "word"),
+    ("russian", "translation"),
+    ("example_es", "example"),
+    ("example_ru", "example_translation"),
+)
+
+
+def _migrate_column_names(conn: sqlite3.Connection) -> None:
+    """Разовое переименование испаноязычных колонок (деплой 2026-08).
+
+    Поколоночный гард, НЕ транзакция: DDL в python-sqlite3 автокоммитится,
+    поэтому атомарности всё равно нет — зато каждая проверка идемпотентна,
+    и прерванная миграция дозавершается при следующем старте.
+    """
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(cards)")}
+    if not cols:
+        return  # свежая база: таблицы ещё нет, создастся сразу с новыми именами
+    for old, new in _COLUMN_RENAMES:
+        if old in cols:
+            conn.execute(f"ALTER TABLE cards RENAME COLUMN {old} TO {new}")
+
 
 def connect(path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
@@ -31,6 +53,7 @@ def connect(path: str) -> sqlite3.Connection:
 
 
 def init_db(conn: sqlite3.Connection) -> None:
+    _migrate_column_names(conn)
     conn.executescript(SCHEMA)
     conn.commit()
 
@@ -40,23 +63,23 @@ def add_card(
     *,
     user_id: int,
     kind: str,
-    spanish: str,
-    russian: str | None,
+    word: str,
+    translation: str | None,
     transcription: str | None,
-    example_es: str | None,
-    example_ru: str | None,
+    example: str | None,
+    example_translation: str | None,
     enriched: bool,
     today: date,
 ) -> int:
     iso = today.isoformat()
     cur = conn.execute(
         """
-        INSERT INTO cards (user_id, kind, spanish, russian, transcription,
-                           example_es, example_ru, enriched, created_at, due_at)
+        INSERT INTO cards (user_id, kind, word, translation, transcription,
+                           example, example_translation, enriched, created_at, due_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (user_id, kind, spanish, russian, transcription, example_es,
-         example_ru, int(enriched), iso, iso),
+        (user_id, kind, word, translation, transcription, example,
+         example_translation, int(enriched), iso, iso),
     )
     conn.commit()
     return int(cur.lastrowid)
@@ -134,31 +157,31 @@ def update_enrichment(
     conn: sqlite3.Connection,
     card_id: int,
     *,
-    russian: str,
+    translation: str,
     transcription: str,
-    example_es: str,
-    example_ru: str,
+    example: str,
+    example_translation: str,
 ) -> None:
     conn.execute(
         """
         UPDATE cards
-        SET russian = ?, transcription = ?, example_es = ?, example_ru = ?,
+        SET translation = ?, transcription = ?, example = ?, example_translation = ?,
             enriched = 1
         WHERE id = ?
         """,
-        (russian, transcription, example_es, example_ru, card_id),
+        (translation, transcription, example, example_translation, card_id),
     )
     conn.commit()
 
 
-def card_exists(conn: sqlite3.Connection, user_id: int, spanish: str) -> bool:
-    """Case-insensitive check whether the user already has this Spanish word.
+def card_exists(conn: sqlite3.Connection, user_id: int, word: str) -> bool:
+    """Case-insensitive check whether the user already has this target-language word.
 
     Compares in Python so accented letters (á, ñ, …) fold correctly, which
     sqlite's ASCII-only lower() would miss.
     """
-    target = spanish.strip().lower()
+    target = word.strip().lower()
     rows = conn.execute(
-        "SELECT spanish FROM cards WHERE user_id = ?", (user_id,)
+        "SELECT word FROM cards WHERE user_id = ?", (user_id,)
     ).fetchall()
-    return any((r["spanish"] or "").strip().lower() == target for r in rows)
+    return any((r["word"] or "").strip().lower() == target for r in rows)

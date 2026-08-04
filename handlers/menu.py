@@ -12,23 +12,18 @@ import db
 import formatting
 import keyboards
 import voice
+from languages import LanguageProfile
 from states import leave_modes
 
 router = Router()
 
-GREETING = (
-    "¡Hola! 🌞 Я помогу учить испанский.\n\n"
-    "• «➕ Добавить слово» — пришли слово или фразу, я переведу, озвучу и "
-    "запомню.\n"
-    "• «🎴 Карточки», «✍️ Проверить себя», «🎧 Аудирование» — тренировки.\n"
-    "• «📖 Мой словарь» — все добавленные слова."
-)
-
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, state: FSMContext) -> None:
+async def cmd_start(
+    message: Message, state: FSMContext, profile: LanguageProfile
+) -> None:
     await leave_modes(state)  # /start is a clean reset
-    await message.answer(GREETING, reply_markup=keyboards.main_menu())
+    await message.answer(profile.greeting, reply_markup=keyboards.main_menu())
 
 
 def _render_page(conn: sqlite3.Connection, user_id: int, page: int):
@@ -83,7 +78,8 @@ async def paginate_vocab(
 
 @router.callback_query(F.data.startswith("card:"))
 async def show_card(
-    call: CallbackQuery, state: FSMContext, conn: sqlite3.Connection
+    call: CallbackQuery, state: FSMContext, conn: sqlite3.Connection,
+    profile: LanguageProfile,
 ) -> None:
     await _remove_card_voice(call, state)
     _, card_id, page = call.data.split(":")
@@ -98,7 +94,7 @@ async def show_card(
         reply_markup=keyboards.card_detail_keyboard(card["id"], int(page)),
         parse_mode="HTML",
     )
-    sent = await voice.send_card_voice(call.message, conn, card)
+    sent = await voice.send_card_voice(call.message, conn, card, profile.tts_voice)
     if sent is not None:
         await state.update_data(vocab_voice_msg_id=sent.message_id)
     await call.answer()

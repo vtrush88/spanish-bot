@@ -30,23 +30,24 @@ Victoria для теста); данные ключуются по `user_id`.
 
 Python 3.12 · **aiogram 3.13.1** (long-polling, MemoryStorage FSM) · **SQLite** (stdlib) ·
 **google-genai 2.8.0** (`gemini-3.5-flash`, фолбэк `gemini-3.5-flash-lite` — бесплатный тир) · **edge-tts 7.2.8** (`es-ES-XimenaNeural`) ·
-python-dotenv · pytest + pytest-asyncio. **101 тест.**
+python-dotenv · pytest + pytest-asyncio · `languages.py` (профили es/en). **124 теста.**
 
 ## Структура
 
 ```
 bot.py            точка входа: Dispatcher, MemoryStorage(FSM), access-filter
                   (ALLOWED_USER_IDS), внедряет conn+llm, include_router, polling
-config.py         env: TELEGRAM_TOKEN, GEMINI_API_KEY, GEMINI_MODEL, GEMINI_FALLBACK_MODEL, ALLOWED_USER_IDS, DB_PATH
+config.py         env: TELEGRAM_TOKEN, GEMINI_API_KEY, GEMINI_MODEL, GEMINI_FALLBACK_MODEL, ALLOWED_USER_IDS, DB_PATH, BOT_LANG
 db.py             SQLite: cards (15 полей), CRUD, get_due_cards, card_exists (дедуп)
+languages.py     языковые профили: голос, промпты, схемы Gemini, UI-строки; выбор через BOT_LANG
 handlers/menu.py     /start, главное меню, «Мой словарь» (5/стр, тап по номеру →
                      карточка с аудио и удалением; страница ездит в callback'ах)
 handlers/add.py      добавление (залипающий режим): enrich → дедуп → превью+аудио
                      → сохранить да/нет; остаёшься в режиме, выход — кнопкой меню
 handlers/training.py 3 режима: карточки / проверка перевода / аудирование
 voice.py          общий send_card_voice: голосовое из кэша file_id или edge-tts
-services/enrichment.py  Gemini structured JSON → {kind,spanish,russian,transcription,example_*}
-services/grading.py     Gemini structured JSON → {verdict,correct_spanish,note} (мягкая проверка)
+services/enrichment.py  Gemini structured JSON → {kind,word,translation,transcription,example,example_translation}
+services/grading.py     Gemini structured JSON → {verdict,correct,note} (мягкая проверка)
 services/llm.py         клиент Gemini + фолбэк моделей + QuotaExceededError
 services/tts.py         edge-tts → MP3 (см. грабли ниже)
 services/srs.py         чистая: next_interval (Leitner-лесенка) + due_on
@@ -71,12 +72,14 @@ cp .env.example .env        # заполнить: TELEGRAM_TOKEN (@BotFather),
                             # GEMINI_API_KEY (Google AI Studio, бесплатно), ALLOWED_USER_IDS (свой tg id)
 python bot.py               # long-polling
 ```
-Тесты: `.venv/bin/pytest -q` (ожидается 101 passed).
+Тесты: `.venv/bin/pytest -q` (ожидается 124 passed).
 Секреты (`.env`), БД (`spanish_bot.db`), `.venv` — в `.gitignore`, не коммитить.
 
 **Деплой на сервер:** пошаговый ран-бук — `docs/superpowers/deploy.md`
-(VPS/DigitalOcean + systemd + ночной бэкап). На сервере бот запущен один —
-локально с тем же токеном не поднимать (TelegramConflictError).
+(VPS/DigitalOcean + systemd + ночной бэкап). На сервере один поллер на токен —
+локально с тем же токеном не поднимать (TelegramConflictError). Второй юнит
+(английский бот, свой токен) существует параллельно — см. раздел «Второй бот
+на том же сервере» в deploy.md.
 
 ## Как вносить изменения (чек-лист, выведен практикой 2026-06-10)
 
@@ -101,7 +104,7 @@ python bot.py               # long-polling
   Перед перезапуском убей старый. На macOS процесс — `Python bot.py` (с большой «P»,
   фреймворковый питон): `pkill -f "MacOS/Python bot.py"`. Шаблон `"python bot.py"`
   (с маленькой) его НЕ ловит, и осиротевший процесс (PPID 1) переживёт kill.
-- **Бесплатный тир Gemini: 250 зап./день (flash) + 1000 (flash-lite), лимиты раздельные.** При 429 код сам фолбэчит на вторую модель; когда исчерпаны обе — QuotaExceededError и мягкая деградация (слово не добавляется / проверка без ИИ-комментария); 5xx-перегрузка трактуется как мусорный ответ (ретрай сервиса, потом обычная ошибка). Модели меняются в .env без деплоя.
+- **Бесплатный тир Gemini: 250 зап./день (flash) + 1000 (flash-lite), лимиты раздельные.** Фолбэк на вторую модель срабатывает и на 429, и на 5xx/обрыв связи (`gemini-3.5-flash` умеет часами отдавать `503 high demand` — наступлено 2026-07-30). Легли все модели: были только 429 → `QuotaExceededError` и мягкая деградация (слово не добавляется / проверка без ИИ-комментария); был хоть один не-429 → `None`, то есть сервисный ретрай и обычное «попробуй ещё раз». Модели меняются в .env без деплоя.
 - **google-genai запинен 2.8.0** — новее требует pydantic≥2.12, конфликт с aiogram 3.13 (<2.10); не поднимать без апгрейда aiogram. `thinking_config` в `generate_json` НЕ задаём: `thinkingBudget=0` возвращает 400 на моделях 3.5+ (наступлено 2026-07-30). И грабля свежих ключей: `gemini-2.5-*` в ListModels числятся, но новым пользователям недоступны (404 «no longer available to new users») — при смене модели проверяй живым вызовом, не списком.
 - **edge-tts должен быть ≥7.x** (`7.2.8`): версия 6.1.12 даёт `WSServerHandshakeError 403`
   (MS требует токен Sec-MS-GEC).
@@ -113,6 +116,10 @@ python bot.py               # long-polling
   смене voice↔audio кэш надо сбрасывать (`UPDATE cards SET audio_file_id = NULL`).
 - Synchronous Gemini-клиент в async-хендлерах обёрнут в `asyncio.to_thread` —
   не разворачивай обратно в прямой вызов, иначе loop блокируется на ~1–5 с на запрос.
+- Колонки cards переименованы на нейтральные (word/translation/example/example_translation,
+  2026-08-04) с поколоночной автомиграцией в init_db — DDL в python-sqlite3 автокоммитится,
+  поэтому гард на каждую колонку, транзакции нет. Старые имена живут только в es-профиле
+  languages.py (промпты/схема) и тестах миграции.
 
 ## Ключевые решения (не переоткрывать без причины)
 
@@ -146,11 +153,14 @@ python bot.py               # long-polling
   ни женских/мужских форм к пользователю («повторила», «умница»), ни прошедшего
   времени от первого лица у бота («отменила», «Сохранил» → «отменяю», «Сохранено»).
   Промпт grading явно требует от Gemini нейтральных note. Новые тексты — тоже нейтральные.
+- **Два бота — один код: язык через BOT_LANG** (es — мамин, en — Victoria+друзья,
+  American English + IPA, голос en-US-EmmaNeural). es-профиль байт-в-байт равен старым
+  литералам — фиксируется tests/test_languages.py; НЕ менять es-строки без осознанного решения.
 
 ## Статус и бэклог
 
 **Готово:** MVP собран (subagent-driven, TDD + ревью), протестирован вживую в Telegram
-(@SimpleSpanishBot), слит в `main` + вторая волна доработок 2026-06-10. 101 тест зелёный.
+(@SimpleSpanishBot), слит в `main` + вторая волна доработок 2026-06-10. 124 теста зелёных.
 **Задеплоен на VPS (2026-06-15):** DigitalOcean Frankfurt, systemd (`Restart=always`),
 ночной бэкап через `scripts/backup-db.sh`, приватный GitHub-репо `vtrush88/spanish-bot`.
 Ран-бук: `docs/superpowers/deploy.md`.

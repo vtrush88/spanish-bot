@@ -10,6 +10,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 from handlers import add, training
+from languages import PROFILES
 from services.llm import QuotaExceededError
 
 
@@ -34,7 +35,7 @@ async def test_receive_text_quota_exceeded_shows_friendly_message_no_save(
 
     conn = MagicMock()
 
-    await add.receive_text(message, state, conn, MagicMock())
+    await add.receive_text(message, state, conn, MagicMock(), PROFILES["es"])
 
     message.answer.assert_awaited_once()
     text = message.answer.await_args.args[0]
@@ -51,7 +52,7 @@ async def test_check_translation_quota_exceeded_marks_not_remembered(monkeypatch
     )
     monkeypatch.setattr(training.intents, "is_giveup", MagicMock(return_value=False))
 
-    card = {"id": 1, "spanish": "mesa", "russian": "стол", "interval_days": 1}
+    card = {"id": 1, "word": "mesa", "translation": "стол", "interval_days": 1}
     monkeypatch.setattr(training.db, "get_card", MagicMock(return_value=card))
     update_review = MagicMock()
     monkeypatch.setattr(training.db, "update_review", update_review)
@@ -67,7 +68,7 @@ async def test_check_translation_quota_exceeded_marks_not_remembered(monkeypatch
 
     conn = MagicMock()
 
-    await training.check_translation(message, state, conn, MagicMock())
+    await training.check_translation(message, state, conn, MagicMock(), PROFILES["es"])
 
     update_review.assert_called_once()
     assert update_review.call_args.kwargs["remembered"] is False
