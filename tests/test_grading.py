@@ -9,6 +9,7 @@ from languages import PROFILES
 from services import grading, llm
 
 ES = PROFILES["es"]
+EN = PROFILES["en"]
 
 
 def _llm(client):
@@ -67,6 +68,27 @@ def test_grade_builds_user_message_from_profile_template():
                   answer="mesa")
     sent = client.models.generate_content.call_args.kwargs["contents"]
     assert sent == "Русский запрос: стол\nОжидаемый испанский: mesa\nОтвет ученика: mesa"
+
+
+def test_grade_sends_profile_prompt_and_schema():
+    client = MagicMock()
+    client.models.generate_content.return_value = _resp(
+        {"verdict": "correct", "correct_spanish": "mesa", "note": "ок"})
+    grading.grade(_llm(client), ES, prompt_ru="стол", expected="mesa",
+                  answer="mesa")
+    cfg = client.models.generate_content.call_args.kwargs["config"]
+    assert cfg.system_instruction == ES.grading_system
+    assert cfg.response_schema == ES.grading_schema
+
+
+def test_grade_en_profile_accepts_neutral_response_keys():
+    client = MagicMock()
+    client.models.generate_content.return_value = _resp(
+        {"verdict": "typo", "correct": "apartment", "note": "маленькая опечатка"})
+    result = grading.grade(_llm(client), EN, prompt_ru="квартира",
+                           expected="apartment", answer="appartment")
+    assert result == {"verdict": "typo", "correct": "apartment",
+                       "note": "маленькая опечатка"}
 
 
 @pytest.mark.parametrize(
