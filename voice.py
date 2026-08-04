@@ -24,7 +24,7 @@ async def send_card_voice(
     """
     if card["audio_file_id"]:
         return await message.answer_voice(card["audio_file_id"])
-    tmp = os.path.join(tempfile.gettempdir(), f"tts_{card['id']}.mp3")
+    tmp = os.path.join(tempfile.gettempdir(), f"tts_{os.getpid()}_{card['id']}.mp3")
     try:
         await tts.synthesize(card["word"], voice, tmp)
         with open(tmp, "rb") as fh:

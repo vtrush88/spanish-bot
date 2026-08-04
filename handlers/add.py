@@ -94,7 +94,7 @@ async def _send_voice(message: Message, word: str, voice: str) -> None:
     bubbles don't join the chat-wide music playlist, so playing one word
     never auto-plays the others.
     """
-    tmp = os.path.join(tempfile.gettempdir(), f"tts_{abs(hash(word))}.mp3")
+    tmp = os.path.join(tempfile.gettempdir(), f"tts_{os.getpid()}_{abs(hash(word))}.mp3")
     try:
         await tts.synthesize(word, voice, tmp)
         with open(tmp, "rb") as fh:

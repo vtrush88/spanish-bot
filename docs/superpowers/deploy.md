@@ -168,6 +168,31 @@ sudo systemctl restart spanish-bot
 journalctl -u spanish-bot -n 20
 ```
 
+⚠️ **Разовое — миграция колонок (2026-08):** перед `git pull`+restart сделать бэкап
+(миграция колонок необратима в одну сторону):
+```bash
+~/spanish-bot/scripts/backup-db.sh ~/spanish-bot/spanish_bot.db ~/backups
+```
+
+Pre-flight (до рестарта) — RENAME COLUMN нужен sqlite ≥3.25:
+```bash
+~/spanish-bot/.venv/bin/python -c "import sqlite3; print(sqlite3.sqlite_version)"
+```
+Версия < 3.25 → НЕ рестартовать, разбираться с апгрейдом sqlite отдельно.
+
+После рестарта — проверить, что миграция и старт прошли:
+```bash
+sqlite3 ~/spanish-bot/spanish_bot.db "PRAGMA table_info(cards);"
+# должны быть: word / translation / example / example_translation
+journalctl -u spanish-bot -n 20   # "Start polling"
+```
+
+Откат после миграции — это НЕ `git revert`: старый код на уже смигрированной БД
+стартует чисто, но падает на любой операции с карточкой
+(`no such column: spanish`). Правильный откат = restore бэкапа:
+`systemctl stop spanish-bot` → скопировать бэкап поверх `spanish_bot.db` →
+`git checkout` на старый коммит → `systemctl start spanish-bot`.
+
 **Новый секрет в `.env` на сервере (не показывая значение в чате/логах):** Victoria кладёт
 строку в локальный `.env` (он git-ignored), дальше перенос одной командой с мака —
 ```bash
@@ -220,6 +245,5 @@ journalctl -u english-bot -n 20     # Start polling, без TelegramConflictErro
 35 3 * * * /home/spanishbot/english-bot/scripts/backup-db.sh /home/spanishbot/english-bot/english_bot.db /home/spanishbot/backups >> /home/spanishbot/backup.log 2>&1
 ```
 
-Мамин бот при этом обновляется обычной «Рутиной обновлений», НО перед
-рестартом с миграцией колонок (2026-08) — разовый бэкап:
-`~/spanish-bot/scripts/backup-db.sh ~/spanish-bot/spanish_bot.db ~/backups`.
+Мамин бот при этом обновляется обычной «Рутиной обновлений» — там же (выше)
+разовые pre-flight/бэкап/откат для миграции колонок (2026-08).
