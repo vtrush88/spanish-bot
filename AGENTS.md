@@ -46,8 +46,8 @@ handlers/add.py      добавление (залипающий режим): enr
                      → сохранить да/нет; остаёшься в режиме, выход — кнопкой меню
 handlers/training.py 3 режима: карточки / проверка перевода / аудирование
 voice.py          общий send_card_voice: голосовое из кэша file_id или edge-tts
-services/enrichment.py  Gemini structured JSON → {kind,spanish,russian,transcription,example_*}
-services/grading.py     Gemini structured JSON → {verdict,correct_spanish,note} (мягкая проверка)
+services/enrichment.py  Gemini structured JSON → {kind,word,translation,transcription,example,example_translation}
+services/grading.py     Gemini structured JSON → {verdict,correct,note} (мягкая проверка)
 services/llm.py         клиент Gemini + фолбэк моделей + QuotaExceededError
 services/tts.py         edge-tts → MP3 (см. грабли ниже)
 services/srs.py         чистая: next_interval (Leitner-лесенка) + due_on
@@ -76,8 +76,10 @@ python bot.py               # long-polling
 Секреты (`.env`), БД (`spanish_bot.db`), `.venv` — в `.gitignore`, не коммитить.
 
 **Деплой на сервер:** пошаговый ран-бук — `docs/superpowers/deploy.md`
-(VPS/DigitalOcean + systemd + ночной бэкап). На сервере бот запущен один —
-локально с тем же токеном не поднимать (TelegramConflictError).
+(VPS/DigitalOcean + systemd + ночной бэкап). На сервере один поллер на токен —
+локально с тем же токеном не поднимать (TelegramConflictError). Второй юнит
+(английский бот, свой токен) существует параллельно — см. раздел «Второй бот
+на том же сервере» в deploy.md.
 
 ## Как вносить изменения (чек-лист, выведен практикой 2026-06-10)
 

@@ -188,9 +188,21 @@ cd ~ && git clone git@github.com:<USER>/spanish-bot.git english-bot
 cd english-bot
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
-# .env: с мака, приёмом «grep | ssh» (см. «Новый секрет в .env» выше),
-# затем на сервере дописать не-секретные строки:
-printf 'BOT_LANG=en\nDB_PATH=/home/spanishbot/english-bot/english_bot.db\n' >> ~/english-bot/.env
+# .env: секреты нового бота (TELEGRAM_TOKEN от BotFather, GEMINI_API_KEY из
+# ОТДЕЛЬНОГО Google-проекта) Victoria кладёт в локальный .env.english (git-ignored,
+# НЕ в общий .env — иначе python-dotenv last-wins и это перезапишет токен мамы).
+```
+
+С мака — перенос секретов одной командой, без значения в чате/логах:
+```bash
+{ printf '\n'; grep '^TELEGRAM_TOKEN=' .env.english; grep '^GEMINI_API_KEY=' .env.english; } | ssh spanishbot@<DROPLET_IP> 'cat >> ~/english-bot/.env'
+```
+
+На сервере (под spanishbot) — дописать не-секретные строки + ALLOWED_USER_IDS —
+это пользователи АНГЛИЙСКОГО бота (Victoria и друзья), НЕ мамин id:
+```bash
+printf 'BOT_LANG=en\nDB_PATH=/home/spanishbot/english-bot/english_bot.db\nALLOWED_USER_IDS=<id Victoria и друзей>\n' >> ~/english-bot/.env
+grep -c '^BOT_LANG=' ~/english-bot/.env; grep -c '^DB_PATH=' ~/english-bot/.env   # оба должны быть 1
 chmod 600 ~/english-bot/.env
 
 # юнит (под root)
