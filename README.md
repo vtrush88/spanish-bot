@@ -1,25 +1,27 @@
-# Spanish Bot
+# Lang Trainer Bot
 
-Персональный телеграм-тренажёр испанского. Полное описание для агентов — в
-[AGENTS.md](AGENTS.md); дизайн — в `docs/superpowers/specs/`.
+Personal vocabulary-trainer Telegram bot (Russian UI). One codebase, deployable
+per language: Spanish (`@SimpleSpanishBot`) and American English
+(`@EnglishUpgradeBot`). Full agent-facing overview — in [AGENTS.md](AGENTS.md)
+(in Russian); design specs — in `docs/superpowers/specs/`.
 
-## Запуск локально
+## Run locally
 
 1. `python -m venv .venv && source .venv/bin/activate`
 2. `pip install -r requirements.txt`
-3. Скопировать `.env.example` → `.env`, заполнить:
-   - `TELEGRAM_TOKEN` — от @BotFather
-   - `GEMINI_API_KEY` — ключ Gemini (Google AI Studio, бесплатно)
-   - `ALLOWED_USER_IDS` — Telegram user_id (через запятую)
-   - `BOT_LANG` — язык бота: `es` (испанский, дефолт) или `en` (английский)
+3. Copy `.env.example` → `.env` and fill in:
+   - `TELEGRAM_TOKEN` — from @BotFather
+   - `GEMINI_API_KEY` — Gemini API key (Google AI Studio, free tier)
+   - `ALLOWED_USER_IDS` — Telegram user ids (comma-separated)
+   - `BOT_LANG` — optional bot language: `es` (Spanish, default) or `en` (English)
 4. `python bot.py`
 
-## Тесты
+## Tests
 
 `pytest -q`
 
-## Деплой
+## Deploy
 
-VPS (DigitalOcean) + systemd. Пошаговый ран-бук:
-[`docs/superpowers/deploy.md`](docs/superpowers/deploy.md). Дизайн:
+VPS (DigitalOcean) + systemd. Step-by-step run-book:
+[`docs/superpowers/deploy.md`](docs/superpowers/deploy.md) (in Russian). Design:
 `docs/superpowers/specs/2026-06-15-spanish-bot-deploy-design.md`.
