@@ -10,6 +10,7 @@ from google.genai import types as genai_types
 
 import config
 import db
+import languages
 from handlers import add, menu, training
 from services import llm as llm_service
 
@@ -34,6 +35,7 @@ async def main() -> None:
     # Inject shared deps into every handler via the data dict.
     dp["conn"] = conn
     dp["llm"] = llm_service.LLM(client=gemini_client, models=models)
+    dp["profile"] = languages.PROFILES[cfg.bot_lang]
 
     # Access control: ignore anyone not in the allow-list.
     dp.message.filter(F.from_user.id.in_(cfg.allowed_user_ids))

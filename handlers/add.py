@@ -15,6 +15,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 import db
 import formatting
 import keyboards
+from languages import LanguageProfile
 from services import enrichment, tts
 from services.llm import LLM, QuotaExceededError
 from states import AddCard, leave_modes
@@ -23,24 +24,23 @@ router = Router()
 
 
 @router.message(F.text == keyboards.BTN_ADD)
-async def start_add(message: Message, state: FSMContext) -> None:
+async def start_add(
+    message: Message, state: FSMContext, profile: LanguageProfile
+) -> None:
     await leave_modes(state)  # drop stale previews so their «✅ Да» goes inert
     await state.set_state(AddCard.waiting_for_text)
-    await message.answer(
-        "Пиши слова или фразы — по одному, на испанском или русском 🙂 "
-        "Я сохраню каждое. Когда закончишь, выбери что-нибудь в меню внизу."
-    )
+    await message.answer(profile.add_intro)
 
 
 @router.message(AddCard.waiting_for_text, F.text, ~F.text.in_(keyboards.MENU_BUTTONS))
 async def receive_text(
     message: Message, state: FSMContext, conn: sqlite3.Connection,
-    llm: LLM,
+    llm: LLM, profile: LanguageProfile,
 ) -> None:
     text = message.text.strip()
     try:
         # to_thread: синхронный вызов Gemini не должен блокировать event loop
-        card = await asyncio.to_thread(enrichment.enrich, llm, text)
+        card = await asyncio.to_thread(enrichment.enrich, llm, profile, text)
     except QuotaExceededError:
         # 429 на обеих моделях: дневной лимит ИЛИ минутный всплеск —
         # не обещаем «завтра», предлагаем и «позже».
@@ -67,12 +67,12 @@ async def receive_text(
         )
         return
 
-    if db.card_exists(conn, message.from_user.id, card["spanish"]):
+    if db.card_exists(conn, message.from_user.id, card["word"]):
         # Stay in waiting_for_text so the next word can be sent straight away,
         # without tapping «Добавить слово» again. Menu buttons still escape
         # (handled at the top of this function).
         await message.answer(
-            f"«{card['spanish']}» уже есть в твоём словаре 🙂 Пришли другое слово."
+            f"«{card['word']}» уже есть в твоём словаре 🙂 Пришли другое слово."
         )
         return
 
@@ -82,21 +82,21 @@ async def receive_text(
     pending[str(seq)] = card
     await state.update_data(pending=pending, seq=seq)
     await message.answer(formatting.card_preview(card), parse_mode="HTML")
-    await _send_voice(message, card["spanish"])
+    await _send_voice(message, card["word"], profile.tts_voice)
     await message.answer("Сохранить?",
                          reply_markup=keyboards.save_card_keyboard(seq))
 
 
-async def _send_voice(message: Message, spanish: str) -> None:
+async def _send_voice(message: Message, word: str, voice: str) -> None:
     """Best-effort audio; silent text-only fallback on failure.
 
     Sent as a voice message (Bot API ≥7.2 accepts MP3 in sendVoice): voice
     bubbles don't join the chat-wide music playlist, so playing one word
     never auto-plays the others.
     """
-    tmp = os.path.join(tempfile.gettempdir(), f"tts_{abs(hash(spanish))}.mp3")
+    tmp = os.path.join(tempfile.gettempdir(), f"tts_{abs(hash(word))}.mp3")
     try:
-        await tts.synthesize(spanish, tmp)
+        await tts.synthesize(word, voice, tmp)
         with open(tmp, "rb") as fh:
             await message.answer_voice(
                 BufferedInputFile(fh.read(), filename="произношение.mp3")
@@ -132,17 +132,18 @@ async def save_yes(
         await call.answer("Эта карточка уже неактивна 🙂")
         return
     await state.update_data(pending=pending)  # consumed: read-once + per-preview scope
-    if db.card_exists(conn, call.from_user.id, card["spanish"]):
+    if db.card_exists(conn, call.from_user.id, card["word"]):
         # Already saved (e.g. a second unsaved preview of the same word, or added
         # since this preview was created) — don't duplicate.
-        await _finish_preview(call, f"«{card['spanish']}» уже есть в твоём словаре 🙂")
+        await _finish_preview(call, f"«{card['word']}» уже есть в твоём словаре 🙂")
         await call.answer()
         return
     db.add_card(
         conn, user_id=call.from_user.id, kind=card["kind"],
-        spanish=card["spanish"], russian=card["russian"],
-        transcription=card["transcription"], example_es=card["example_es"],
-        example_ru=card["example_ru"], enriched=True, today=date.today(),
+        word=card["word"], translation=card["translation"],
+        transcription=card["transcription"], example=card["example"],
+        example_translation=card["example_translation"],
+        enriched=True, today=date.today(),
     )
     await _finish_preview(call, "Сохранено! ✅ Пиши следующее 🙂")
     await call.answer()
