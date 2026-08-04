@@ -175,3 +175,39 @@ journalctl -u spanish-bot -n 20
 ```
 и проверка без раскрытия: `ssh … 'grep -c "^GEMINI_API_KEY=" ~/spanish-bot/.env'` (ожидается `1`).
 Так делали при миграции на Gemini 2026-07-30.
+
+## Второй бот на том же сервере (английский, 2026-08)
+
+Тот же код, другой язык: отдельный клон, `.env` с `BOT_LANG=en`, свой юнит.
+Секреты: новый токен от BotFather + ключ Gemini из ОТДЕЛЬНОГО Google-проекта
+(лимиты бесплатного тира — по проекту; мамин бот и английский не делятся).
+
+```bash
+# на сервере (под spanishbot)
+cd ~ && git clone git@github.com:<USER>/spanish-bot.git english-bot
+cd english-bot
+python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
+
+# .env: с мака, приёмом «grep | ssh» (см. «Новый секрет в .env» выше),
+# затем на сервере дописать не-секретные строки:
+printf 'BOT_LANG=en\nDB_PATH=/home/spanishbot/english-bot/english_bot.db\n' >> ~/english-bot/.env
+chmod 600 ~/english-bot/.env
+
+# юнит (под root)
+cp /home/spanishbot/english-bot/english-bot.service /etc/systemd/system/
+systemd-analyze verify /etc/systemd/system/english-bot.service
+systemctl daemon-reload && systemctl enable --now english-bot
+journalctl -u english-bot -n 20     # Start polling, без TelegramConflictError
+
+# sudoers (под root): расширить /etc/sudoers.d/spanishbot-service
+#   ... /usr/bin/systemctl restart spanish-bot, /usr/bin/systemctl status spanish-bot,
+#   /usr/bin/systemctl restart english-bot, /usr/bin/systemctl status english-bot
+# и проверить: visudo -c
+
+# бэкап (под spanishbot): вторая строка crontab
+35 3 * * * /home/spanishbot/english-bot/scripts/backup-db.sh /home/spanishbot/english-bot/english_bot.db /home/spanishbot/backups >> /home/spanishbot/backup.log 2>&1
+```
+
+Мамин бот при этом обновляется обычной «Рутиной обновлений», НО перед
+рестартом с миграцией колонок (2026-08) — разовый бэкап:
+`~/spanish-bot/scripts/backup-db.sh ~/spanish-bot/spanish_bot.db ~/backups`.
