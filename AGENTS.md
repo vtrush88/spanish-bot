@@ -162,7 +162,8 @@ python bot.py               # long-polling
 **Готово:** MVP собран (subagent-driven, TDD + ревью), протестирован вживую в Telegram
 (@SimpleSpanishBot), слит в `main` + вторая волна доработок 2026-06-10. 124 теста зелёных.
 **Задеплоен на VPS (2026-06-15):** DigitalOcean Frankfurt, systemd (`Restart=always`),
-ночной бэкап через `scripts/backup-db.sh`, приватный GitHub-репо `vtrush88/spanish-bot`.
+ночной бэкап через `scripts/backup-db.sh`, приватный GitHub-репо `vtrush88/lang-trainer-bot`
+(до 2026-08-04 — `spanish-bot`, переименован после появления второго бота).
 Ран-бук: `docs/superpowers/deploy.md`.
 **Мигрирован с Claude API на бесплатный тир Gemini (2026-07-28):** спека `docs/superpowers/specs/2026-07-28-gemini-migration-design.md`.
 

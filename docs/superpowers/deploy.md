@@ -14,7 +14,7 @@ cd "<MAC_REPO>"
 # через gh (если установлен) — создаёт приватный репо и добавляет remote:
 gh repo create spanish-bot --private --source=. --remote=origin --push
 # либо вручную: создать приватный репо на github.com, затем:
-#   git remote add origin git@github.com:<USER>/spanish-bot.git && git push -u origin main
+#   git remote add origin git@github.com:<USER>/lang-trainer-bot.git && git push -u origin main
 ```
 Проверка: `git remote -v` показывает `origin`, на GitHub виден `main`.
 
@@ -77,7 +77,7 @@ ssh -T git@github.com    # ожидается "Hi <USER>/spanish-bot! You've suc
 ## 5. Клонирование и окружение (под spanishbot)
 ```bash
 cd ~
-git clone git@github.com:<USER>/spanish-bot.git
+git clone git@github.com:<USER>/lang-trainer-bot.git
 cd spanish-bot
 python3.12 -m venv .venv
 .venv/bin/pip install -r requirements.txt
@@ -209,7 +209,7 @@ journalctl -u spanish-bot -n 20   # "Start polling"
 
 ```bash
 # на сервере (под spanishbot)
-cd ~ && git clone git@github.com:<USER>/spanish-bot.git english-bot
+cd ~ && git clone git@github.com:<USER>/lang-trainer-bot.git english-bot
 cd english-bot
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
