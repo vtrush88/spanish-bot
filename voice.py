@@ -12,7 +12,7 @@ from services import tts
 
 
 async def send_card_voice(
-    message: Message, conn: sqlite3.Connection, card
+    message: Message, conn: sqlite3.Connection, card, voice: str
 ) -> Message | None:
     """Send cached audio by file_id, else synthesize and cache the file_id.
 
@@ -26,7 +26,7 @@ async def send_card_voice(
         return await message.answer_voice(card["audio_file_id"])
     tmp = os.path.join(tempfile.gettempdir(), f"tts_{card['id']}.mp3")
     try:
-        await tts.synthesize(card["spanish"], tmp)
+        await tts.synthesize(card["word"], voice, tmp)
         with open(tmp, "rb") as fh:
             sent = await message.answer_voice(
                 BufferedInputFile(fh.read(), filename="произношение.mp3")
