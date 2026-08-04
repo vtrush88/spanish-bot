@@ -5,7 +5,10 @@ from unittest.mock import MagicMock
 import pytest
 from google.genai import errors
 
+from languages import PROFILES
 from services import grading, llm
+
+ES = PROFILES["es"]
 
 
 def _llm(client):
@@ -22,10 +25,10 @@ def test_grade_returns_verdict():
         {"verdict": "typo", "correct_spanish": "comida",
          "note": "маленькая опечатка"}
     )
-    result = grading.grade(_llm(client), prompt_ru="еда",
-                           expected_es="comida", answer="komida")
+    result = grading.grade(_llm(client), ES, prompt_ru="еда",
+                           expected="comida", answer="komida")
     assert result["verdict"] == "typo"
-    assert result["correct_spanish"] == "comida"
+    assert result["correct"] == "comida"
 
 
 def test_grade_raises_on_bad_response():
@@ -33,8 +36,8 @@ def test_grade_raises_on_bad_response():
     client.models.generate_content.side_effect = [
         SimpleNamespace(text="x"), SimpleNamespace(text="x")]
     with pytest.raises(grading.GradingError):
-        grading.grade(_llm(client), prompt_ru="еда",
-                      expected_es="comida", answer="komida")
+        grading.grade(_llm(client), ES, prompt_ru="еда",
+                      expected="comida", answer="komida")
 
 
 def test_grade_rejects_unknown_verdict():
@@ -43,8 +46,8 @@ def test_grade_rejects_unknown_verdict():
         _resp({"verdict": "maybe", "correct_spanish": "comida", "note": "?"}),
         _resp({"verdict": "maybe", "correct_spanish": "comida", "note": "?"})]
     with pytest.raises(grading.GradingError):
-        grading.grade(_llm(client), prompt_ru="еда",
-                      expected_es="comida", answer="komida")
+        grading.grade(_llm(client), ES, prompt_ru="еда",
+                      expected="comida", answer="komida")
 
 
 def test_grade_propagates_quota_error():
@@ -52,8 +55,18 @@ def test_grade_propagates_quota_error():
     client.models.generate_content.side_effect = [
         errors.ClientError(429, {"message": "quota"})]
     with pytest.raises(llm.QuotaExceededError):
-        grading.grade(_llm(client), prompt_ru="еда",
-                      expected_es="comida", answer="komida")
+        grading.grade(_llm(client), ES, prompt_ru="еда",
+                      expected="comida", answer="komida")
+
+
+def test_grade_builds_user_message_from_profile_template():
+    client = MagicMock()
+    client.models.generate_content.return_value = _resp(
+        {"verdict": "correct", "correct_spanish": "mesa", "note": "ок"})
+    grading.grade(_llm(client), ES, prompt_ru="стол", expected="mesa",
+                  answer="mesa")
+    sent = client.models.generate_content.call_args.kwargs["contents"]
+    assert sent == "Русский запрос: стол\nОжидаемый испанский: mesa\nОтвет ученика: mesa"
 
 
 @pytest.mark.parametrize(
